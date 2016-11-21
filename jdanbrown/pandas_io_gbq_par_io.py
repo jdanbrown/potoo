@@ -378,12 +378,15 @@ class GbqConnector(object):
 
         raise StreamingInsertError
 
-    def run_query(self, query):
+    def run_query(self, query, max_results):
         try:
             from googleapiclient.errors import HttpError
         except:
             from apiclient.errors import HttpError
         from oauth2client.client import AccessTokenRefreshError
+
+        # For multithreading, for parallel io. Fail fast if user doesn't have it installed.
+        import dask
 
         _check_google_client_version()
 
@@ -438,54 +441,65 @@ class GbqConnector(object):
 
             self._print('Retrieving results...')
 
-        total_rows = int(query_reply['totalRows'])
-        result_pages = list()
-        seen_page_tokens = list()
-        current_row = 0
-        # Only read schema on first page
-        schema = query_reply['schema']
+        _print_got_page_progress = {'current_rows': 0}  # Mutable ref cell to share across functions calls
 
-        # Loop through each page of data
-        while 'rows' in query_reply and current_row < total_rows:
-            page = query_reply['rows']
-            result_pages.append(page)
-            current_row += len(page)
-
+        def print_got_page(page, start_index, max_results, total_rows):
+            _print_got_page_progress['current_rows'] += len(page)
             self.print_elapsed_seconds(
-                '  Got page: {}; {}% done. Elapsed'.format(
-                    len(result_pages),
-                    round(100.0 * current_row / total_rows)))
+                '  Got max_results[{}] + start_index[{}] -> len_page[{}] + progress[{}/{} = {}%], elapsed'.format(
+                    max_results,
+                    start_index,
+                    len(page),
+                    _print_got_page_progress['current_rows'],
+                    total_rows,
+                    round(100.0 * _print_got_page_progress['current_rows'] / total_rows),
+                ),
+                overlong=0,
+            )
+            return page
 
-            if current_row == total_rows:
-                break
+        def get_page(start_index, max_results, total_rows, **kwargs):
 
-            page_token = query_reply.get('pageToken', None)
-
-            if not page_token and current_row < total_rows:
-                raise InvalidPageToken("Required pageToken was missing. "
-                                       "Received {0} of {1} rows"
-                                       .format(current_row, total_rows))
-
-            elif page_token in seen_page_tokens:
-                raise InvalidPageToken("A duplicate pageToken was returned")
-
-            seen_page_tokens.append(page_token)
+            # Re-init self.service per process (for dask.multiprocessing)
+            self.service = self.get_service()
+            job_collection = self.service.jobs()
 
             try:
                 query_reply = job_collection.getQueryResults(
                     projectId=job_reference['projectId'],
                     jobId=job_reference['jobId'],
-                    pageToken=page_token).execute()
+                    startIndex=start_index,
+                    maxResults=max_results,  # Limit: 10MB per page
+                ).execute()
             except HttpError as ex:
                 self.process_http_error(ex)
 
-        if current_row < total_rows:
-            raise InvalidPageToken()
+            return print_got_page(query_reply.get('rows', []), start_index, max_results, total_rows)
 
-        # print basic query stats
-        self._print('Got {} rows.\n'.format(total_rows))
+        schema = query_reply['schema']  # Only read schema on first page
+        total_rows = int(query_reply['totalRows'])
+        page0 = print_got_page(query_reply.get('rows', []), None, None, total_rows)
+        max_results = max_results or len(page0)  # Limit is 10GB per page, so reuse row count from initial page
+        start_indexes = range(max_results, total_rows, max_results)
 
-        return schema, result_pages
+        pages = [page0]
+        pages += dask.delayed(list)([
+            dask.delayed(get_page)(start_index, max_results, total_rows)
+            for start_index in start_indexes
+        ]).compute(
+            # Single threaded
+            # get=dask.async.get_sync,
+            # Multithreaded: must re-init self.service per thread (above), else weird error from ssl
+            #   - https://botbot.me/freenode/python-requests/2016-09-12/?msg=28835010
+            get=dask.threaded.get,
+        )
+
+        self.print_elapsed_seconds(
+            'Got {} rows, elapsed'.format(sum([len(page) for page in pages])),
+            overlong=0,
+        )
+
+        return schema, pages
 
     def load_data(self, dataframe, dataset_id, table_id, chunksize):
         try:
@@ -625,7 +639,9 @@ def _parse_entry(field_value, field_type):
 
 
 def read_gbq(query, project_id=None, index_col=None, col_order=None,
-             reauth=False, verbose=True, private_key=None, dialect='legacy'):
+             reauth=False, verbose=True, private_key=None, dialect='legacy',
+             max_results=None,  # TODO limit is 10MB per page, not in terms of row count
+             ):
     """Load data from Google BigQuery.
 
     THIS IS AN EXPERIMENTAL LIBRARY
@@ -701,7 +717,7 @@ def read_gbq(query, project_id=None, index_col=None, col_order=None,
     connector = GbqConnector(project_id, reauth=reauth, verbose=verbose,
                              private_key=private_key,
                              dialect=dialect)
-    schema, pages = connector.run_query(query)
+    schema, pages = connector.run_query(query, max_results)
     dataframe_list = []
     while len(pages) > 0:
         page = pages.pop()
