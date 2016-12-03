@@ -1,3 +1,4 @@
+import collections
 import os
 import pipes
 import sys
@@ -14,6 +15,11 @@ def puts(x):
 
 def singleton(cls):
     return cls()
+
+
+def attrs(**kwargs):
+    [keys, values] = list(zip(*kwargs.items())) or [[], []]
+    return collections.namedtuple('attrs', keys)(*values)
 
 
 def shell(cmd):

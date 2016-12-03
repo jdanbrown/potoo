@@ -50,8 +50,7 @@ def raw_sql(session, sql):
 
 
 def pd_read_bq_with(
-    project_id,
-    private_key,
+    project_id=None,
     dialect='standard',
     # read_gbq=pd.io.gbq.read_gbq,                     # Sequential IO, slow
     read_gbq=jdanbrown.pandas_io_gbq_par_io.read_gbq,  # Parallel IO (via dask), ballpark ~4x faster than sequential IO
@@ -59,13 +58,13 @@ def pd_read_bq_with(
 ):
     """
     Example usage:
+        pd_read_bq = pd_read_bq_with(project_id='...')
+        df = pd_read_bq('''
+            select ...
+            from ...
+        ''')
 
-        pd_read_bq = pd_read_bq_with(
-            project_id='expanded-goal-148121',
-            private_key='data/private-key-bigquery-admin.json',  # Create service account -> download private key (json)
-        )
-
-        # Measurements from home ISP with ~4MB/s download
+    Measurements from home ISP with ~4MB/s download:
         pd_read_bq('''
             select some_uuid_col
             from some_table_with_25m_rows
@@ -83,7 +82,6 @@ def pd_read_bq_with(
     """
     return lambda query: read_gbq(
         query=query,
-        private_key=private_key,
         dialect=dialect,
         project_id=project_id,
         **kwargs

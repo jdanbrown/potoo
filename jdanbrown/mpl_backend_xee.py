@@ -12,7 +12,6 @@ Test:
 
 from datetime import datetime
 import os.path
-import pipes
 import platform
 import subprocess
 import sys
@@ -35,7 +34,7 @@ from jdanbrown.util import mkdir_p
 #   - https://github.com/matplotlib/matplotlib/blob/master/lib/matplotlib/rcsetup.py#L885
 #   - https://github.com/matplotlib/matplotlib/blob/master/lib/matplotlib/__init__.py#L1119
 _rcParams = {
-    'xee.path':                     'data/fig',
+    'xee.path':                     '~/scratch/$PWD/fig',
     'xee.show_via':                 'savefig',  # savefig | canvas
     'xee.platform.Darwin.open_cmd': 'open -g -a Xee³ %(fig_path)s',
     'xee.platform.Linux.open_cmd':  '',
@@ -96,7 +95,7 @@ def new_fig_path():
         mkdir_p(os.path.dirname(fig_path))
         return fig_path
     else:
-        figs_dir = _rcParams['xee.path']
+        figs_dir = os.path.expanduser(os.path.expandvars(_rcParams['xee.path']))
         mkdir_p(figs_dir)
         return os.path.join(
             figs_dir,
