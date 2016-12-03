@@ -1,9 +1,9 @@
 import pandas as pd
 
-import jdanbrown.numpy
-# from jdanbrown.numpy import _float_format
-import jdanbrown.pandas_io_gbq_par_io
-from jdanbrown.util import get_rows, get_cols
+import potoo.numpy
+# from potoo.numpy import _float_format
+import potoo.pandas_io_gbq_par_io
+from potoo.util import get_rows, get_cols
 
 
 display_width       = lambda cols: cols
@@ -14,7 +14,7 @@ display_precision   = 3
 
 def set_display():
 
-    jdanbrown.numpy.set_display()
+    potoo.numpy.set_display()
 
     # http://pandas.pydata.org/pandas-docs/stable/generated/pandas.set_option.html
     #   - TODO Any good way to %page by default?
@@ -44,7 +44,7 @@ def pd_read_sql(session, sql):
         session.rollback()
 
 
-# TODO -> jdanbrown.sqlalchemy
+# TODO -> potoo.sqlalchemy
 def raw_sql(session, sql):
     return (dict(x.items()) for x in session.execute(sql))
 
@@ -52,8 +52,8 @@ def raw_sql(session, sql):
 def pd_read_bq_with(
     project_id=None,
     dialect='standard',
-    # read_gbq=pd.io.gbq.read_gbq,                     # Sequential IO, slow
-    read_gbq=jdanbrown.pandas_io_gbq_par_io.read_gbq,  # Parallel IO (via dask), ballpark ~4x faster than sequential IO
+    # read_gbq=pd.io.gbq.read_gbq,                 # Sequential IO, slow
+    read_gbq=potoo.pandas_io_gbq_par_io.read_gbq,  # Parallel IO (via dask), ballpark ~4x faster than sequential IO
     **kwargs
 ):
     """

@@ -4,7 +4,7 @@
 Based on https://github.com/oselivanov/matplotlib_iterm2/blob/master/matplotlib_iterm2/backend_iterm2.py
 
 Test:
-    $ MPLBACKEND=module://jdanbrown.mpl_backend_xee ipy -c 'from pylab import *; plot([1,2,3]); show()'
+    $ MPLBACKEND=module://potoo.mpl_backend_xee ipy -c 'from pylab import *; plot([1,2,3]); show()'
 """
 
 # http://matplotlib.org/devel/coding_guide.html#developing-a-new-backend
@@ -26,8 +26,8 @@ import matplotlib.image
 from PIL import Image
 import re
 
-from jdanbrown.dynvar import dynvar
-from jdanbrown.util import mkdir_p
+from potoo.dynvar import dynvar
+from potoo.util import mkdir_p
 
 
 # TODO Where to put these? Any way to get custom keys into matplotlibrc?

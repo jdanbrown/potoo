@@ -5,6 +5,6 @@ pillow==3.4.2
 ggplot==0.11.5
 seaborn==0.7.1
 
-# For pandas.io.gbq / jdanbrown.pandas_io_gbq_par_io
+# For pandas.io.gbq / potoo.pandas_io_gbq_par_io
 google-api-python-client==1.5.5
 oauth2client==3.0.0

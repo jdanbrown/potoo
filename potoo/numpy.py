@@ -1,6 +1,6 @@
 import numpy as np
 
-from jdanbrown.util import get_cols
+from potoo.util import get_cols
 
 
 def _float_format(width, precision):

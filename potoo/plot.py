@@ -6,8 +6,8 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 
-import jdanbrown.mpl_backend_xee
-from jdanbrown.util import puts
+import potoo.mpl_backend_xee
+from potoo.util import puts
 
 
 # mpl.style.use('ggplot')
@@ -33,8 +33,8 @@ def plot_plt(
 
 
 def plot_img(data, basename_suffix=''):
-    with jdanbrown.mpl_backend_xee.basename_suffix(basename_suffix):
-        return jdanbrown.mpl_backend_xee.imsave_xee(data)
+    with potoo.mpl_backend_xee.basename_suffix(basename_suffix):
+        return potoo.mpl_backend_xee.imsave_xee(data)
 
 
 def plot_img_via_imshow(data):
@@ -80,7 +80,7 @@ def plot_gg(
     tight_layout=None,  # Already does some sort of layout tightening, doing plt.tight_layout() makes it bad
 ):
     # TODO g.title isn't working? And is clobbering basename_suffix somehow?
-    # with jdanbrown.mpl_backend_xee.basename_suffix(g.title or jdanbrown.mpl_backend_xee.basename_suffix.value()):
+    # with potoo.mpl_backend_xee.basename_suffix(g.title or potoo.mpl_backend_xee.basename_suffix.value()):
     # repr(g)  # (Over)optimized for repl/notebook usage (repr(g) = g.make(); plt.show())
     # TODO HACK Why doesn't theme_base.__radd__ allow multiple themes to compose?
     if not isinstance(g.theme, theme_rc):
