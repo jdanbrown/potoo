@@ -20,8 +20,8 @@ def set_display():
     #   - TODO Any good way to %page by default?
     #       - here: pd.set_option('display.width', 10000)
     #       - repl: pd.DataFrame({i:range(100) for i in range(100)})
-    pd.set_option('display.width',        max(1, int(display_width(get_cols()))))     # Default: 80
-    pd.set_option('display.max_rows',     max(1, int(display_max_rows(get_rows()))))  # Default: 60
+    pd.set_option('display.width',        max(0, int(display_width(get_cols()))))     # Default: 80
+    pd.set_option('display.max_rows',     max(0, int(display_max_rows(get_rows()))))  # Default: 60
     pd.set_option('display.max_columns',  display_max_columns)                        # Default: 20
     pd.set_option('display.precision',    display_precision)  # Default: 6; better magic than _float_format
     # pd.set_option('display._float_format', _float_format(10, 3))  # Default: magic in pandas.formats.format
