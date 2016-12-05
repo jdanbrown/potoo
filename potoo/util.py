@@ -4,8 +4,12 @@ import pipes
 import sys
 
 
-get_rows = lambda: int(os.popen('stty size').read().split()[0])
-get_cols = lambda: int(os.popen('stty size').read().split()[1])
+_tonum   = lambda x: None if x is None else int(x)
+_unlist  = lambda xs: None if len(xs) == 0 else xs[0]
+get_rows = lambda: _tonum(_unlist(os.popen('stty size 2>/dev/null').read().split()[0:1]))
+get_cols = lambda: _tonum(_unlist(os.popen('stty size 2>/dev/null').read().split()[1:2]))
+# get_rows = lambda: int(os.popen('stty size 2>/dev/null').read().split()[0])  # XXX
+# get_cols = lambda: int(os.popen('stty size 2>/dev/null').read().split()[1])  # XXX
 
 
 def puts(x):
