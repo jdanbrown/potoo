@@ -5,11 +5,6 @@ from potoo.pandas import pd_read_bq, bq_default_project
 import potoo.pandas_io_gbq_par_io as gbq
 
 
-bq_unarray   = lambda xs: [x['v'] for x in xs]
-bq_unstruct  = lambda x: bq_unarray(x['f'])
-bq_unstructs = lambda xs: [bq_unstruct(x) for x in bq_unarray(xs)]
-
-
 # TODO Use https://googlecloudplatform.github.io/google-cloud-python/stable/bigquery-usage.html
 #   - TODO Needs a little extra setup for auth
 class BQ:
@@ -50,38 +45,28 @@ class BQ:
         table_id,
         fields_f=lambda xs: xs,  # e.g. to subset when bq barfs on too many things
     ):
-        df = self.pd_read(
-            'select\n%(select)s\nfrom %(dataset_id)s.%(table_id)s' % dict(
-                dataset_id = dataset_id,
-                table_id = table_id,
-                select = ',\n'.join(
-                    '  %(expr)s as `%(name)s`' % dict(
-                        expr = '''
-                            struct(
-                                '%(name)s' as name,
-                                count(*) as count,
-                                approx_count_distinct(`%(name)s`) as `distinct`,
-                                sum(case when `%(name)s` is null or `%(name)s` = '' then 1 else 0 end) / count(*) as null_frac,
-                                approx_top_count(`%(name)s`, 5) as top_by_count,
-                                approx_quantiles(`%(name)s`, 4) as quantiles
-                            )
-                        ''' % field,
-                        name = field['name'],
-                    )
+        return self.pd_read('''
+            select * from unnest((
+                select %(array_agg_expr)s
+                from %(dataset_id)s.%(table_id)s
+            ))
+        ''' % dict(
+                array_agg_expr = '[\n%s\n]' % ',\n'.join(
+                    '''
+                        struct(
+                            '%(name)s' as name,
+                            count(*) as count,
+                            approx_count_distinct(`%(name)s`) as `distinct`,
+                            sum(case when `%(name)s` is null or `%(name)s` = '' then 1 else 0 end) / count(*) as null_frac,
+                            approx_top_count(`%(name)s`, 5) as top_by_count,
+                            approx_quantiles(`%(name)s`, 4) as quantiles
+                        )
+                    ''' % field
                     for field in fields_f(bq.table_schema(dataset_id, table_id))
                 ),
+                dataset_id = dataset_id,
+                table_id = table_id,
             )
-        )
-        return (df
-            .T
-            .rename(columns={0: 'row'})
-            .applymap(bq_unstruct)
-            .assign(count        = lambda df: df['row'].map(lambda x: int(x[0])))
-            .assign(distinct     = lambda df: df['row'].map(lambda x: int(x[1])))
-            .assign(null_frac    = lambda df: df['row'].map(lambda x: float(x[2])))
-            .assign(top_by_count = lambda df: df['row'].map(lambda x: [(int(n), y) for (y, n) in bq_unstructs(x[3])]))
-            .assign(quantiles    = lambda df: df['row'].map(lambda x: bq_unarray(x[4])))
-            .drop('row', 1)
         )
 
 
