@@ -1,4 +1,7 @@
+from contextlib import contextmanager
 import pandas as pd
+import subprocess
+import types
 
 import potoo.numpy
 # from potoo.numpy import _float_format
@@ -6,10 +9,29 @@ import potoo.pandas_io_gbq_par_io
 from potoo.util import get_rows, get_cols
 
 
-display_width       = lambda cols: cols
-display_max_rows    = lambda rows: rows - 7
-display_max_columns = 100000
-display_precision   = 3
+display_width        = lambda cols: cols
+display_max_rows     = lambda rows: rows - 7
+display_max_columns  = 100000
+display_max_colwidth = lambda cols: int(cols * .7)  # No good generic rule here; default to scalable
+# display_max_colwidth = lambda cols: 100
+display_precision    = 3
+
+
+def set_display_max_colwidth(x=display_max_colwidth):
+    global display_max_colwidth
+    if isinstance(x, types.FunctionType):
+        display_max_colwidth = x
+    elif isinstance(x, float):
+        display_max_colwidth = lambda cols: int(cols * x)
+    elif isinstance(x, int):
+        display_max_colwidth = lambda cols: x
+    return display_max_colwidth
+
+
+def set_display_precision(x=display_precision):
+    global display_precision
+    display_precision = x
+    return display_precision
 
 
 def set_display():
@@ -23,8 +45,23 @@ def set_display():
     pd.set_option('display.width',        max(0, int(display_width(get_cols()))))     # Default: 80
     pd.set_option('display.max_rows',     max(0, int(display_max_rows(get_rows()))))  # Default: 60
     pd.set_option('display.max_columns',  display_max_columns)                        # Default: 20
+    pd.set_option('display.max_colwidth', display_max_colwidth(get_cols()))           # Default: 50
     pd.set_option('display.precision',    display_precision)  # Default: 6; better magic than _float_format
     # pd.set_option('display._float_format', _float_format(10, 3))  # Default: magic in pandas.formats.format
+
+
+# TODO Check out `with pd.option_context`
+@contextmanager
+def with_options(options):
+    saved = {}
+    for k, v in options.items():
+        saved[k] = pd.get_option(k)
+        pd.set_option(k, v)
+    try:
+        yield
+    finally:
+        for k, v in saved.items():
+            pd.set_option(k, v)
 
 
 def pd_flatmap(df, f):
