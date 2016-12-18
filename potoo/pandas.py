@@ -86,7 +86,8 @@ def raw_sql(session, sql):
     return (dict(x.items()) for x in session.execute(sql))
 
 
-def pd_read_bq_with(
+def pd_read_bq(
+    query,
     project_id=None,
     dialect='standard',
     # read_gbq=pd.io.gbq.read_gbq,                 # Sequential IO, slow
@@ -95,31 +96,25 @@ def pd_read_bq_with(
 ):
     """
     Example usage:
-        pd_read_bq = pd_read_bq_with(project_id='...')
         df = pd_read_bq('''
             select ...
             from ...
-        ''')
-
-    Measurements from home ISP with ~4MB/s download:
-        pd_read_bq('''
-            select some_uuid_col
-            from some_table_with_25m_rows
-            -- order by id asc limit 2500 -- ~10s
-            -- order by id asc limit 25000 -- ~10s
-            -- order by id asc limit 250000 -- ~10s
-            -- order by id asc limit 2500000 -- ~30s
-            -- /*order by id asc*/ limit 25000000 -- ~300s
-              -- order by triggers resource error: https://cloud.google.com/bigquery/troubleshooting-errors
         ''')
 
     Docs:
     - http://pandas.pydata.org/pandas-docs/stable/generated/pandas.io.gbq.read_gbq.html
     - https://cloud.google.com/bigquery/docs/
     """
-    return lambda query: read_gbq(
+    return read_gbq(
         query=query,
         dialect=dialect,
-        project_id=project_id,
+        project_id=project_id or bq_default_project(),
         **kwargs
     )
+
+
+def bq_default_project():
+    return subprocess.check_output(
+        'gcloud config get-value project 2>/dev/null',
+        shell=True,
+    ).decode('utf8').strip()
