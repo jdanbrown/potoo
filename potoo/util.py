@@ -11,8 +11,8 @@ def or_else(x, f):
         return x
 
 
-get_rows = lambda: or_else(0, lambda: int(os.popen('stty size 2>/dev/null').read().split()[0]))
-get_cols = lambda: or_else(0, lambda: int(os.popen('stty size 2>/dev/null').read().split()[1]))
+get_rows = lambda: or_else(100, lambda: int(os.popen('stty size 2>/dev/null').read().split()[0]))
+get_cols = lambda: or_else(120, lambda: int(os.popen('stty size 2>/dev/null').read().split()[1]))
 
 
 def puts(x):
