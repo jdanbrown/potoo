@@ -12,6 +12,7 @@ import sys
 
 import numpy as np
 
+from collections import OrderedDict
 from distutils.version import StrictVersion
 from pandas import compat
 from pandas.core.api import DataFrame
@@ -600,42 +601,44 @@ class GbqConnector(object):
 
 
 def _parse_data(schema, rows):
-    # see:
-    # http://pandas.pydata.org/pandas-docs/dev/missing_data.html
-    # #missing-data-casting-rules-and-indexing
-    dtype_map = {'INTEGER': np.dtype(float),
-                 'FLOAT': np.dtype(float),
-                 # This seems to be buggy without nanosecond indicator
-                 'TIMESTAMP': 'M8[ns]'}
-
-    fields = schema['fields']
-    col_types = [field['type'] for field in fields]
-    col_names = [str(field['name']) for field in fields]
-    col_dtypes = [dtype_map.get(field['type'], object) for field in fields]
-    page_array = np.zeros((len(rows),),
-                          dtype=lzip(col_names, col_dtypes))
-
-    for row_num, raw_row in enumerate(rows):
-        entries = raw_row.get('f', [])
-        for col_num, field_type in enumerate(col_types):
-            field_value = _parse_entry(entries[col_num].get('v', ''),
-                                       field_type)
-            page_array[row_num][col_num] = field_value
-
-    return DataFrame(page_array, columns=col_names)
+    # TODO(db) Is dtype_map important? Was previously used to build a numpy array that built the pandas df
+    # # see: http://pandas.pydata.org/pandas-docs/dev/missing_data.html#missing-data-casting-rules-and-indexing
+    # dtype_map = {'INTEGER': np.dtype(float),
+    #              'FLOAT': np.dtype(float),
+    #              # This seems to be buggy without nanosecond indicator
+    #              'TIMESTAMP': 'M8[ns]'}
+    # col_dtypes = [dtype_map.get(field['type'], object) for field in schema['fields']]
+    return DataFrame(
+        OrderedDict([
+            (field['name'], _parse_entry(field, row_cell))
+            for field, row_cell in zip(schema['fields'], row.get('f', []))
+        ])
+        for row in rows
+    )
 
 
-def _parse_entry(field_value, field_type):
-    if field_value is None or field_value == 'null':
+def _parse_entry(field, row_cell):
+    value = row_cell.get('v', '')
+    if value is None or value == 'null':
         return None
-    if field_type == 'INTEGER' or field_type == 'FLOAT':
-        return float(field_value)
-    elif field_type == 'TIMESTAMP':
-        timestamp = datetime.utcfromtimestamp(float(field_value))
+    elif field.get('mode') == 'REPEATED':
+        return [_parse_entry({k: v for k, v in field.items() if k != 'mode'}, x) for x in value]
+    elif field['type'] == 'RECORD':
+        return OrderedDict([
+            (field['name'], _parse_entry(field, row_cell))
+            for field, row_cell in zip(field['fields'], value['f'])
+        ])
+    elif field['type'] == 'INTEGER':
+        return int(value)
+    elif field['type'] == 'FLOAT':
+        return float(value)
+    elif field['type'] == 'TIMESTAMP':
+        timestamp = datetime.utcfromtimestamp(float(value))
         return np.datetime64(timestamp)
-    elif field_type == 'BOOLEAN':
-        return field_value == 'true'
-    return field_value
+    elif field['type'] == 'BOOLEAN':
+        return value == 'true'
+    else:
+        return value
 
 
 def read_gbq(query, project_id=None, index_col=None, col_order=None,
