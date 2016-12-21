@@ -1,5 +1,6 @@
 # Copied from https://github.com/pandas-dev/pandas/blob/f26b049/pandas/io/gbq.py
-#   - Added maxResults for more efficient results fetching over high-latency connections
+#   - Added support for arrays and structs in query results [TODO Make PR for upstream]
+#   - Added parallel fetching of query results to make that faster over high-latency connections (hacked in dask for par IO)
 
 import warnings
 from datetime import datetime
