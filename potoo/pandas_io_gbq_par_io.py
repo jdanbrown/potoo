@@ -624,9 +624,12 @@ def _parse_entry(field, row_cell):
     elif field.get('mode') == 'REPEATED':
         return [_parse_entry({k: v for k, v in field.items() if k != 'mode'}, x) for x in value]
     elif field['type'] == 'RECORD':
-        return OrderedDict([
+        return dict([  # TODO(db) OrderedDict adds more noise than utility here?
             (field['name'], _parse_entry(field, row_cell))
-            for field, row_cell in zip(field['fields'], value['f'])
+            for field, row_cell in zip(
+                field.get('fields', ['_%s' % i for i in range(len(value['f']))]),
+                value['f'],
+            )
         ])
     elif field['type'] == 'INTEGER':
         return int(value)
