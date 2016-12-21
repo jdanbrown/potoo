@@ -39,6 +39,7 @@ class BQ:
     # bq.table_summary
     #   - cf. https://www.postgresql.org/docs/current/static/view-pg-stats.html
     #   - TODO histogram (graph?)
+    #   - TODO Add perc to approx_top_count [{'count':100, 'value':'a'}, {'count':50, 'value':'b'}, ...]
     def table_summary(
         self,
         dataset_id,
