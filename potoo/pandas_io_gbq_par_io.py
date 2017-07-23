@@ -1,5 +1,12 @@
+# TODO Throw this away and use https://github.com/googledatalab/pydatalab instead
+#   - Supports full API, e.g. use_cached_results, max_billing_tier
+#   - See examples: https://github.com/googledatalab/notebooks
+#   - But verify it works with arrays and structs...
+
 # Copied from https://github.com/pandas-dev/pandas/blob/f26b049/pandas/io/gbq.py
 #   - Added support for arrays and structs in query results [TODO Make PR for upstream]
+#   - Added use_query_cache argument to read_gbq (default: True) [TODO Does it actually work?]
+#   - [TODO Add maximumBillingTier (https://cloud.google.com/bigquery/docs/reference/rest/v2/jobs)]
 #   - Added parallel fetching of query results to make that faster over high-latency connections (hacked in dask for par IO)
 
 import warnings
@@ -150,7 +157,7 @@ class GbqConnector(object):
     scope = 'https://www.googleapis.com/auth/bigquery'
 
     def __init__(self, project_id, reauth=False, verbose=False,
-                 private_key=None, dialect='legacy'):
+                 private_key=None, dialect='legacy', use_query_cache=True):
         _check_google_client_version()
         _test_google_api_imports()
         self.project_id = project_id
@@ -158,6 +165,7 @@ class GbqConnector(object):
         self.verbose = verbose
         self.private_key = private_key
         self.dialect = dialect
+        self.use_query_cache = use_query_cache
         self.credentials = self.get_credentials()
         self.service = self.get_service()
 
@@ -397,9 +405,10 @@ class GbqConnector(object):
             'configuration': {
                 'query': {
                     'query': query,
-                    'useLegacySql': self.dialect == 'legacy'
+                    'useLegacySql': self.dialect == 'legacy',
+                    'useQueryCache': self.use_query_cache,
                     # 'allowLargeResults', 'createDisposition',
-                    # 'preserveNulls', destinationTable, useQueryCache
+                    # 'preserveNulls', destinationTable,
                 }
             }
         }
@@ -648,6 +657,7 @@ def _parse_entry(field, row_cell):
 def read_gbq(query, project_id=None, index_col=None, col_order=None,
              reauth=False, verbose=True, private_key=None, dialect='legacy',
              max_results=None,  # TODO limit is 10MB per page, not in terms of row count
+             use_query_cache=True,
              ):
     """Load data from Google BigQuery.
 
@@ -723,7 +733,7 @@ def read_gbq(query, project_id=None, index_col=None, col_order=None,
 
     connector = GbqConnector(project_id, reauth=reauth, verbose=verbose,
                              private_key=private_key,
-                             dialect=dialect)
+                             dialect=dialect, use_query_cache=use_query_cache)
     schema, pages = connector.run_query(query, max_results)
     dataframe_list = []
     while len(pages) > 0:

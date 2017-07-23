@@ -1,3 +1,8 @@
+# TODO Throw this away and use https://github.com/googledatalab/pydatalab instead
+#   - Supports full API, e.g. use_cached_results, max_billing_tier
+#   - See examples: https://github.com/googledatalab/notebooks
+#   - But verify it works with arrays and structs...
+
 from collections import OrderedDict
 import pandas as pd
 
@@ -73,3 +78,20 @@ class BQ:
 
 # Connect bq
 bq = BQ(bq_default_project())
+
+# XXX Testing
+# importlib.reload(gbq)
+# bq.table_head('rt_v1_s1', 'outgoing_Neighborhood_Data_OpenDoor_AttomDataNeighborhoodAirportNoise_zip_OpenDoor_AttomDataNeighborhoodAirportNoise')
+# bq.table_summary('rt_v1_s1', 'outgoing_Neighborhood_Data_OpenDoor_AttomDataNeighborhoodAirportNoise_zip_OpenDoor_AttomDataNeighborhoodAirportNoise')
+# bq.pd_read('''
+#     select
+#         address_token,
+#         4,
+#         'foo',
+#         true,
+#         struct('a',3,true),
+#         struct('b' as x, 4 as y, false as z),
+#         [1,2,3],
+#         'foo'
+#     from (select address_token from dwellings_v0.addresses limit 2)
+# ''')

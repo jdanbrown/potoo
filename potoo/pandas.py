@@ -5,7 +5,6 @@ import types
 
 import potoo.numpy
 # from potoo.numpy import _float_format
-import potoo.pandas_io_gbq_par_io
 from potoo.util import get_rows, get_cols
 
 
@@ -90,8 +89,9 @@ def pd_read_bq(
     query,
     project_id=None,
     dialect='standard',
-    # read_gbq=pd.io.gbq.read_gbq,                 # Sequential IO, slow
-    read_gbq=potoo.pandas_io_gbq_par_io.read_gbq,  # Parallel IO (via dask), ballpark ~4x faster than sequential IO
+    # read_gbq=pd.io.gbq.read_gbq,                   # Sequential IO, slow
+    # read_gbq=potoo.pandas_io_gbq_par_io.read_gbq,  # Parallel IO (via dask), ballpark ~4x faster than sequential IO
+    read_gbq=None,                                   # Lazily loads potoo.pandas_io_gbq_par_io.read_gbq
     **kwargs
 ):
     """
@@ -105,6 +105,11 @@ def pd_read_bq(
     - http://pandas.pydata.org/pandas-docs/stable/generated/pandas.io.gbq.read_gbq.html
     - https://cloud.google.com/bigquery/docs/
     """
+
+    if read_gbq is None:
+        import potoo.pandas_io_gbq_par_io
+        read_gbq = potoo.pandas_io_gbq_par_io.read_gbq
+
     return read_gbq(
         query=query,
         dialect=dialect,
