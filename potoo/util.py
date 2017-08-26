@@ -3,6 +3,7 @@ from contextlib import contextmanager
 from datetime import datetime
 import os
 import pipes
+import shutil
 import sys
 import time
 import traceback
@@ -15,9 +16,12 @@ def or_else(x, f):
         return x
 
 
-stty_size = lambda: [int(x) for x in os.popen('stty size 2>/dev/null').read().split()]
-get_rows = lambda: or_else(None, lambda: int(os.getenv('PD_ROWS'))) or or_else(None, lambda: stty_size()[0]) or 100
-get_cols = lambda: or_else(None, lambda: int(os.getenv('PD_COLS'))) or or_else(None, lambda: stty_size()[1]) or 120
+# 0 means use get_terminal_size(), ''/None means unlimited
+get_rows = lambda: or_else(None, lambda: int(os.getenv('PD_ROWS'))) or 0  # noqa
+get_cols = lambda: or_else(None, lambda: int(os.getenv('PD_COLS'))) or 0  # noqa
+
+# XXX Back compat
+stty_size = lambda: list(reversed(shutil.get_terminal_size()))  # noqa
 
 
 def puts(x):
