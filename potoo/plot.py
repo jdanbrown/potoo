@@ -1,10 +1,10 @@
 from contextlib import contextmanager
 from copy import deepcopy
 from functools import reduce
-import ggplot as gg
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
+import PIL
 
 import potoo.mpl_backend_xee
 from potoo.util import puts
@@ -33,8 +33,21 @@ def plot_plt(
 
 
 def plot_img(data, basename_suffix=''):
+    data = _plot_img_cast(data)
     with potoo.mpl_backend_xee.basename_suffix(basename_suffix):
         return potoo.mpl_backend_xee.imsave_xee(data)
+
+
+def _plot_img_cast(x):
+    try:
+        import IPython.core.display
+        ipython_image_type = IPython.core.display.Image
+    except:
+        ipython_image_type = ()  # Empty tuple of types for isinstance, always returns False
+    if isinstance(x, ipython_image_type):
+        return PIL.Image.open(x.filename)
+    else:
+        return x
 
 
 def plot_img_via_imshow(data):
@@ -91,68 +104,71 @@ def plot_gg(
     # return g # Don't return to avoid plotting a second time if repl/notebook
 
 
-def gg_layer(*args):
-    'Uniform syntax for many-line layer addition, unlike \ and +'
+def gg_sum(*args):
+    "Simpler syntax for lots of ggplot '+' layers when you need to break over many lines, comment stuff out, etc."
     return reduce(lambda a, b: a + b, args)
 
 
-class theme_rc(gg.themes.theme):
-    '''
-    - Avoids overriding key defaults from ~/.matplotlib/matplotlibrc (including figure.figsize)
-    - Allows removing existing mappings by adding {k: None}
-    - Avoids mutating the global class var theme_base._rcParams
-    - Hacks up a way to compose themes (base themes don't compose, and they also dirty shared global state)
-    - Can also passthru kwargs to gg.themes.theme, e.g. x_axis_text=attrs(kwargs=dict(rotation=45))
-    '''
-
-    def __init__(
-        self,
-        rcParams={},
-        theme=gg.theme_gray(),  # HACK: Copy default from ggplot.theme
-        **kwargs
-    ):
-        super(theme_rc, self).__init__(**kwargs)
-        rcParams.setdefault('figure.figsize', None)  # Use default, e.g. from ~/.matplotlib/matplotlibrc
-        self.rcParams = rcParams  # Don't mutate global mutable class var theme_base._rcParams
-        self.theme = theme
-
-    def __radd__(self, other):
-        self.theme.__radd__(other)                    # Whatever weird side effects
-        return super(theme_rc, self).__radd__(other)  # Our own weird side effects
-
-    def get_rcParams(self):
-        return {
-            k: v
-            for k, v in dict(self.theme.get_rcParams(), **self.rcParams).items()
-            if v is not None  # Remove existing mapping
-        }
-
-    def apply_final_touches(self, ax):
-        return self.theme.apply_final_touches(ax)
-
-
-class scale_color_cmap(gg.scales.scale.scale):
-    '''
-    ggplot scale from a mpl colormap, e.g.
-
-        scale_color_cmap('Set1')
-        scale_color_cmap(plt.cm.Set1)
-
-    Docs: http://matplotlib.org/users/colormaps.html
-    '''
-
-    def __init__(self, cmap):
-        self.cmap = cmap if isinstance(cmap, mpl.colors.Colormap) else plt.cm.get_cmap(cmap)
-
-    def __radd__(self, gg):
-        color_col = gg._aes.data.get('color', gg._aes.data.get('fill'))
-        n_colors = 3 if not color_col else max(gg.data[color_col].nunique(), 3)
-        colors = [self.cmap(x) for x in np.linspace(0, 1, n_colors)]
-        gg.colormap = self.cmap        # For aes(color=...) + continuous
-        gg.manual_color_list = colors  # For aes(color=...) + discrete
-        gg.manual_fill_list = colors   # For aes(fill=...)  + discrete
-        # ...                          # Any cases I've missed?
-        return gg
+# TODO Update for plotnine
+# import ggplot as gg
+# class theme_rc(gg.themes.theme):
+#     '''
+#     - Avoids overriding key defaults from ~/.matplotlib/matplotlibrc (including figure.figsize)
+#     - Allows removing existing mappings by adding {k: None}
+#     - Avoids mutating the global class var theme_base._rcParams
+#     - Hacks up a way to compose themes (base themes don't compose, and they also dirty shared global state)
+#     - Can also passthru kwargs to gg.themes.theme, e.g. x_axis_text=attrs(kwargs=dict(rotation=45))
+#     '''
+#
+#     def __init__(
+#         self,
+#         rcParams={},
+#         theme=gg.theme_gray(),  # HACK: Copy default from ggplot.theme
+#         **kwargs
+#     ):
+#         super(theme_rc, self).__init__(**kwargs)
+#         rcParams.setdefault('figure.figsize', None)  # Use default, e.g. from ~/.matplotlib/matplotlibrc
+#         self.rcParams = rcParams  # Don't mutate global mutable class var theme_base._rcParams
+#         self.theme = theme
+#
+#     def __radd__(self, other):
+#         self.theme.__radd__(other)                    # Whatever weird side effects
+#         return super(theme_rc, self).__radd__(other)  # Our own weird side effects
+#
+#     def get_rcParams(self):
+#         return {
+#             k: v
+#             for k, v in dict(self.theme.get_rcParams(), **self.rcParams).items()
+#             if v is not None  # Remove existing mapping
+#         }
+#
+#     def apply_final_touches(self, ax):
+#         return self.theme.apply_final_touches(ax)
+#
+#
+# import ggplot as gg
+# class scale_color_cmap(gg.scales.scale.scale):
+#     '''
+#     ggplot scale from a mpl colormap, e.g.
+#
+#         scale_color_cmap('Set1')
+#         scale_color_cmap(plt.cm.Set1)
+#
+#     Docs: http://matplotlib.org/users/colormaps.html
+#     '''
+#
+#     def __init__(self, cmap):
+#         self.cmap = cmap if isinstance(cmap, mpl.colors.Colormap) else plt.cm.get_cmap(cmap)
+#
+#     def __radd__(self, gg):
+#         color_col = gg._aes.data.get('color', gg._aes.data.get('fill'))
+#         n_colors = 3 if not color_col else max(gg.data[color_col].nunique(), 3)
+#         colors = [self.cmap(x) for x in np.linspace(0, 1, n_colors)]
+#         gg.colormap = self.cmap        # For aes(color=...) + continuous
+#         gg.manual_color_list = colors  # For aes(color=...) + discrete
+#         gg.manual_fill_list = colors   # For aes(fill=...)  + discrete
+#         # ...                          # Any cases I've missed?
+#         return gg
 
 
 class gg_xtight(object):
