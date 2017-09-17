@@ -22,7 +22,7 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.backend_bases import FigureManagerBase
 from matplotlib.figure import Figure
 import matplotlib.image
-# import matplotlib.pyplot  # Avoid cyclic import, since we're used by pyplot in ~/.matplotlib/matplotlibrc
+# import matplotlib.pyplot as plt  # Avoid cyclic import, since we're used by pyplot in ~/.matplotlib/matplotlibrc
 from PIL import Image
 import re
 
@@ -67,8 +67,8 @@ class FigureManagerXee(FigureManagerBase):
 
     # Configure via `savefig.*` rcParams: http://matplotlib.org/users/customizing.html
     def _show_via_savefig(self, fig_path):
-        import matplotlib.pyplot
-        matplotlib.pyplot.savefig(fig_path)
+        import matplotlib.pyplot as plt
+        plt.savefig(fig_path)
 
     # Configure via `figure.*` rcParams: http://matplotlib.org/users/customizing.html
     def _show_via_canvas(self, fig_path):
