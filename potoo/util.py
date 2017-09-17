@@ -16,12 +16,10 @@ def or_else(x, f):
         return x
 
 
-# 0 means use get_terminal_size(), ''/None means unlimited
-get_rows = lambda: or_else(None, lambda: int(os.getenv('PD_ROWS'))) or 0  # noqa
-get_cols = lambda: or_else(None, lambda: int(os.getenv('PD_COLS'))) or 0  # noqa
-
-# XXX Back compat
-stty_size = lambda: list(reversed(shutil.get_terminal_size()))  # noqa
+# In pandas, 0 means use get_terminal_size(), ''/None means unlimited
+get_term_size = lambda: shutil.get_terminal_size()  # ($COLUMNS else detect dynamically, $LINES else detect dynamically)  # noqa
+get_rows = lambda: get_term_size().lines            # $LINES else detect dynamically                                      # noqa
+get_cols = lambda: get_term_size().columns          # $COLUMNS else detect dynamically                                    # noqa
 
 
 def puts(x):
@@ -115,7 +113,7 @@ def watch(period_s, f):
     try:
         os.system('stty -echo -cbreak')
         while True:
-            nrows, ncols = stty_size()
+            ncols, nrows = get_term_size()
             try:
                 s = str(f())
             except Exception:
