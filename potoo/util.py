@@ -49,30 +49,6 @@ def mkdir_p(dir):
     os.system("mkdir -p %s" % pipes.quote(dir))  # Don't error like os.makedirs
 
 
-@singleton
-class use_curses:
-
-    def __init__(self):
-        self._stdscr = None
-
-    @contextmanager
-    def __call__(self):
-        # Don't import until used, in case curses does weird things on some platform or in some environment
-        import curses
-        if self._stdscr is None:
-            # Warning: if you call initscr twice you'll break curses for the rest of the current process
-            #   - e.g. breaks under ipython %autoreload
-            self._stdscr = curses.initscr()
-        try:
-            yield (curses, self._stdscr)
-        finally:
-            # Warning: if you call endwin you'll never be able to use curses again for the rest of the current process
-            # curses.endwin()
-            # Do `stty sane` instead
-            os.system('stty sane 2>/dev/null')
-            # Reset cursor to x=0
-            print('')
-
 
 # Do everything manually to avoid weird behaviors in curses impl below
 def watch(period_s, f):
@@ -145,3 +121,28 @@ def watch(period_s, f):
 #                 time.sleep(period_s)
 #         except KeyboardInterrupt:
 #             pass
+
+
+@singleton
+class use_curses:
+
+    def __init__(self):
+        self._stdscr = None
+
+    @contextmanager
+    def __call__(self):
+        # Don't import until used, in case curses does weird things on some platform or in some environment
+        import curses
+        if self._stdscr is None:
+            # Warning: if you call initscr twice you'll break curses for the rest of the current process
+            #   - e.g. breaks under ipython %autoreload
+            self._stdscr = curses.initscr()
+        try:
+            yield (curses, self._stdscr)
+        finally:
+            # Warning: if you call endwin you'll never be able to use curses again for the rest of the current process
+            # curses.endwin()
+            # Do `stty sane` instead
+            os.system('stty sane 2>/dev/null')
+            # Reset cursor to x=0
+            print('')
