@@ -5,17 +5,38 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 import PIL
+import plotnine
+from plotnine import theme
 
 import potoo.mpl_backend_xee
 from potoo.util import puts
 
 
-# mpl.style.use('ggplot')
+def theme_figsize(width=8, aspect_ratio=2/3, dpi=72):
+    """
+    plotnine theme with defaults for figure_size width + aspect_ratio (which overrides figure_size height if defined):
+    - https://plotnine.readthedocs.io/en/stable/generated/plotnine.themes.theme.html#aspect_ratio-and-figure_size
+    """
+    return theme(
+        # height is ignored by plotnine when aspect_ratio is given, but supply anyway so that we can set theme.rcParams
+        # into mpl.rcParams since the latter has no notion of aspect_ratio [TODO Submit PR to fix]
+        figure_size=[width, width * aspect_ratio],
+        aspect_ratio=aspect_ratio,
+        dpi=dpi,
+    )
 
 
-# For explicit calculations, e.g. seaborn factorplot (size, aspect)
-#   - np.array for easy arithmetic, e.g. figsize * 1.25
-figsize = np.array(mpl.rcParams['figure.figsize'])
+def figsize(*args, **kwargs):
+    """
+    Set theme_figsize(...) as global plotnine.options + mpl.rcParams:
+    - https://plotnine.readthedocs.io/en/stable/generated/plotnine.themes.theme.html
+    - http://matplotlib.org/users/customizing.html
+    """
+    t = theme_figsize(*args, **kwargs)
+    mpl.rcParams.update(t.rcParams)
+    plotnine.options.figure_size = t.themeables['figure_size'].properties['value']
+    plotnine.options.aspect_ratio = t.themeables['aspect_ratio'].properties['value']
+    plotnine.options.dpi = t.themeables['dpi'].properties['value']  # (Ignored for figure_format='svg')
 
 
 #
@@ -219,7 +240,12 @@ def plot_sns(passthru=None):
     return passthru
 
 
-def sns_size_aspect(rows=1, cols=1, scale=1, figsize=figsize):
+def sns_size_aspect(
+    rows=1,
+    cols=1,
+    scale=1,
+    figsize=np.array(mpl.rcParams['figure.figsize']),
+):
     '''
     e.g. http://seaborn.pydata.org/generated/seaborn.factorplot.html
     '''
