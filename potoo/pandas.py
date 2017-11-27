@@ -3,6 +3,7 @@ import os
 import pandas as pd
 import signal
 import subprocess
+import sys
 import types
 
 import potoo.numpy
@@ -11,12 +12,17 @@ from potoo.util import get_rows, get_cols
 
 
 # Mutate these for manual control
-display_width          = 0  # Default: 80; 0 means use get_terminal_size, ''/None means unlimited
-display_max_rows       = 0  # Default: 60; 0 means use get_terminal_size, ''/None means unlimited
-display_max_columns    = 100000  # Default: 20
-display_max_colwidth   = lambda cols: int(cols * .7)  # No good generic rule here; default to scalable
-# display_max_colwidth = lambda cols: 100  # Default: 50
-display_precision      = 3  # Default: 6; better magic than _float_format
+#   - TODO In ipykernel you have to manually set_display() after changing any of these
+#       - Workaround: use pd.set_option for the display_*)
+ipykernel_display_max_rows = 1000   # For pd df output
+ipykernel_display_width    = 10000  # For pd df output
+ipykernel_lines            = 75     # Does this affect anything?
+ipykernel_columns          = 120    # For ipython pretty printing (not dfs)
+display_width              = 0  # Default: 80; 0 means use get_terminal_size, ''/None means unlimited
+display_max_rows           = 0  # Default: 60; 0 means use get_terminal_size, ''/None means unlimited
+display_max_columns        = None  # Default: 20
+display_max_colwidth       = lambda cols: 1000  # Default: 50
+display_precision          = 3  # Default: 6; better magic than _float_format
 
 
 def set_display_max_colwidth(x=display_max_colwidth):
@@ -39,11 +45,34 @@ def set_display_precision(x=display_precision):
 def set_display():
     "Make everything nice"
 
-    # Unset $LINES + $COLUMNS so pandas will detect changes in terminal size after process start
-    #   - https://github.com/pandas-dev/pandas/blob/473a7f3/pandas/io/formats/terminal.py#L32-L33
-    #   - https://github.com/python/cpython/blob/7028e59/Lib/shutil.py#L1071-L1079
-    os.environ['LINES'] = ''
-    os.environ['COLUMNS'] = ''
+    # XXX I couldn't find a way to make auto-detect work with both ipython (terminal) + ipykernel (atom)
+    # # Unset $LINES + $COLUMNS so pandas will detect changes in terminal size after process start
+    # #   - https://github.com/pandas-dev/pandas/blob/473a7f3/pandas/io/formats/terminal.py#L32-L33
+    # #   - https://github.com/python/cpython/blob/7028e59/Lib/shutil.py#L1071-L1079
+    # #   - TODO These used to be '' instead of del. Revert back if this change causes problems.
+    # os.environ.pop('LINES', None)
+    # os.environ.pop('COLUMNS', None)
+
+    # HACK This is all horrible and I hate it. After much trial and error I settled on this as a way to make both
+    # ipython (terminal) and ipykernel (atom) work.
+    try:
+        size = os.get_terminal_size(sys.__stdout__.fileno())
+    except OSError:
+        # If ipykernel
+        lines = ipykernel_lines
+        columns = ipykernel_columns
+        _display_width = display_width or ipykernel_display_width or columns
+        _display_max_rows = display_max_rows or ipykernel_display_max_rows or lines
+    else:
+        # If terminal
+        lines = size.lines - 8
+        columns = size.columns
+        _display_width = display_width or columns
+        _display_max_rows = display_max_rows or lines
+
+    # For ipython pretty printing (not dfs)
+    os.environ['LINES'] = str(lines)
+    os.environ['COLUMNS'] = str(columns)
 
     potoo.numpy.set_display()
 
@@ -51,8 +80,8 @@ def set_display():
     #   - TODO Any good way to %page by default?
     #       - here: pd.set_option('display.width', 10000)
     #       - repl: pd.DataFrame({i:range(100) for i in range(100)})
-    pd.set_option('display.width',        display_width)
-    pd.set_option('display.max_rows',     display_max_rows)
+    pd.set_option('display.width',        _display_width)
+    pd.set_option('display.max_rows',     _display_max_rows)
     pd.set_option('display.max_columns',  display_max_columns)
     pd.set_option('display.max_colwidth', display_max_colwidth(get_cols()))
     pd.set_option('display.precision',    display_precision)  # Default: 6; better magic than _float_format
