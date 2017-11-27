@@ -12,6 +12,19 @@ import potoo.mpl_backend_xee
 from potoo.util import puts
 
 
+def plot_set_defaults():
+    figsize()
+    plot_set_default_mpl_rcParams()
+
+
+# ~/.matploblib/matploblibrc isn't read by ipykernel, so we call this from ~/.pythonrc which is
+#   - TODO What's the right way to init mpl.rcParams?
+def plot_set_default_mpl_rcParams():
+    mpl.rcParams['figure.facecolor'] = 'white'  # Match savefig.facecolor
+    mpl.rcParams['image.interpolation'] = 'nearest'  # Don't interpolate, show square pixels
+    # TODO Sync more carefully with ~/.matploblib/matploblibrc?
+
+
 def theme_figsize(width=8, aspect_ratio=2/3, dpi=72):
     """
     plotnine theme with defaults for figure_size width + aspect_ratio (which overrides figure_size height if defined):
