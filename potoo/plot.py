@@ -1,6 +1,7 @@
 from contextlib import contextmanager
 from copy import deepcopy
 from functools import reduce
+from IPython.core.getipython import get_ipython
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
@@ -12,9 +13,94 @@ import potoo.mpl_backend_xee
 from potoo.util import puts
 
 
+ipy = get_ipython()  # None if not in ipython
+
+
+def get_figsize_named(size_name):
+    # Determined empirically, and fine-tuned for atom splits with status-bar + tab-bar
+    mpl_aspect = 2/3  # Tuned using plotnine, but works the same for mpl/sns
+    R_aspect = 7/12  # Not sure why this is different than mpl, but it is
+    figsizes_mpl = dict(
+        # Some common sizes that are useful; add more as necessary
+        inline_short = dict(width=10, aspect_ratio=mpl_aspect / 2),
+        inline       = dict(width=10, aspect_ratio=mpl_aspect * 1),
+        half         = dict(width=10, aspect_ratio=mpl_aspect * 2),
+        full         = dict(width=20, aspect_ratio=mpl_aspect * 1),
+        half_dense   = dict(width=20, aspect_ratio=mpl_aspect * 2),
+        full_dense   = dict(width=40, aspect_ratio=mpl_aspect * 1),
+    )
+    figsizes = dict(
+        mpl=figsizes_mpl,
+        R={
+            k: dict(width=v['width'], height=v['width'] * v['aspect_ratio'] / mpl_aspect * R_aspect)
+            for k, v in figsizes_mpl.items()
+        },
+    )
+    if size_name not in figsizes['mpl']:
+        raise ValueError(f'Unknown figsize name[{size_name}]')
+    return {k: figsizes[k][size_name] for k in figsizes.keys()}
+
+
 def plot_set_defaults():
     figsize()
     plot_set_default_mpl_rcParams()
+    plot_set_jupyter_defaults()
+    plot_set_R_defaults()
+
+
+# XXX
+# # Sets mpl + %R figsize
+# def figsize_named(size_name):
+#     size = get_figsize_named(size_name)
+#     # Set mpl figsize (via potoo.plot.figsize)
+#     figsize(name=None, **size['mpl'])
+#     # Set R figsize (via %Rdefaults)
+#     #   - TODO How to compose with user's %Rdefaults?
+#     if ipy:
+#         Rdefaults = ipy.magics_manager.magics['line'].get('Rdefaults')
+#         if Rdefaults:  # TODO Remove conditional after my PR lands
+#             Rdefaults(R_line_width_height(**size['R']))
+
+
+# Only sets mpl figsize [TODO Also set %R figsize: got the necessary scaling factors above, just needs some refactoring]
+def figsize(*args, **kwargs):
+    """
+    Set theme_figsize(...) as global plotnine.options + mpl.rcParams:
+    - https://plotnine.readthedocs.io/en/stable/generated/plotnine.themes.theme.html
+    - http://matplotlib.org/users/customizing.html
+    """
+    t = theme_figsize(*args, **kwargs)
+    [width, height] = figure_size = t.themeables['figure_size'].properties['value']
+    aspect_ratio = t.themeables['aspect_ratio'].properties['value']
+    dpi = t.themeables['dpi'].properties['value']
+    # Set mpl figsize
+    mpl.rcParams.update(t.rcParams)
+    # Set plotnine figsize
+    plotnine.options.figure_size = figure_size
+    plotnine.options.aspect_ratio = aspect_ratio
+    plotnine.options.dpi = dpi  # (Ignored for figure_format='svg')
+    # Set %R figsize (via %Rdefaults)
+    plot_set_R_figsize(width, height)
+
+
+# Sets mpl figsize
+def theme_figsize(name='inline', width=None, aspect_ratio=None, dpi=72):
+    """
+    plotnine theme with defaults for figure_size width + aspect_ratio (which overrides figure_size height if defined):
+    - https://plotnine.readthedocs.io/en/stable/generated/plotnine.themes.theme.html#aspect_ratio-and-figure_size
+    """
+    if name:
+        size = get_figsize_named(name)['mpl']
+        width = size['width']
+        aspect_ratio = size['aspect_ratio']
+    height = width * aspect_ratio
+    return theme(
+        # height is ignored by plotnine when aspect_ratio is given, but supply anyway so that we can set theme.rcParams
+        # into mpl.rcParams since the latter has no notion of aspect_ratio [TODO Submit PR to fix]
+        figure_size=[width, height],
+        aspect_ratio=aspect_ratio,
+        dpi=dpi,
+    )
 
 
 # ~/.matploblib/matploblibrc isn't read by ipykernel, so we call this from ~/.pythonrc which is
@@ -25,31 +111,82 @@ def plot_set_default_mpl_rcParams():
     # TODO Sync more carefully with ~/.matploblib/matploblibrc?
 
 
-def theme_figsize(width=8, aspect_ratio=2/3, dpi=72):
-    """
-    plotnine theme with defaults for figure_size width + aspect_ratio (which overrides figure_size height if defined):
-    - https://plotnine.readthedocs.io/en/stable/generated/plotnine.themes.theme.html#aspect_ratio-and-figure_size
-    """
-    return theme(
-        # height is ignored by plotnine when aspect_ratio is given, but supply anyway so that we can set theme.rcParams
-        # into mpl.rcParams since the latter has no notion of aspect_ratio [TODO Submit PR to fix]
-        figure_size=[width, width * aspect_ratio],
-        aspect_ratio=aspect_ratio,
-        dpi=dpi,
-    )
+def plot_set_jupyter_defaults():
+    if ipy:
+        # 'svg' is pretty, 'retina' is the prettier version of 'png', and 'png' is ugly (on retina macs)
+        ipy.run_line_magic('config', "InlineBackend.figure_format = 'svg'")  # 'svg' | 'retina' | 'png'
 
 
-def figsize(*args, **kwargs):
+#
+# %R
+#
+
+
+def load_ext_rpy2_ipython():
+    if not ipy:
+        return False
+    else:
+        try:
+            ipy.run_cell(
+                '%%capture\n'
+                '%load_ext rpy2.ipython'
+            )
+        except:
+            return False
+        else:
+            return True
+
+
+def plot_set_R_defaults():
+    if load_ext_rpy2_ipython():
+        ipy.run_line_magic('Rdevice', 'svg')  # 'svg' | 'png'
+
+
+def plot_set_R_figsize(width, height):
     """
-    Set theme_figsize(...) as global plotnine.options + mpl.rcParams:
-    - https://plotnine.readthedocs.io/en/stable/generated/plotnine.themes.theme.html
-    - http://matplotlib.org/users/customizing.html
+    Set figsize for %R/%%R magics
     """
-    t = theme_figsize(*args, **kwargs)
-    mpl.rcParams.update(t.rcParams)
-    plotnine.options.figure_size = t.themeables['figure_size'].properties['value']
-    plotnine.options.aspect_ratio = t.themeables['aspect_ratio'].properties['value']
-    plotnine.options.dpi = t.themeables['dpi'].properties['value']  # (Ignored for figure_format='svg')
+    if load_ext_rpy2_ipython():
+        Rdefaults = ipy.magics_manager.magics['line'].get('Rdefaults')
+        # TODO Remove conditional after my PR lands
+        if not Rdefaults:
+            print("Can't set %R figsize: %Rdefaults not found")
+        else:
+            # TODO How to not clobber user's %Rdefaults? Would need a way to compose at arg granularity
+            Rdefaults(R_line_width_height(width, height))
+
+
+def R(line, cell=None):
+    """
+    Wrapper around %%R/%R that allows -s/--size-name. Assumes %R/%%R has been renamed %_R/%%_R
+    """
+    import re
+    line = line.strip()
+    matches = re.match(r'(?:(?:-s\s*|--size-name(?:\s+|=))(\w+\b))?\s*(.*)', line)
+    if not matches:
+        raise ValueError('Failed to parse: %r' % line)
+    [size_name, line] = matches.groups()
+    if size_name:
+        size = get_figsize_named(size_name)
+        line = f"{R_line_width_height(**size['R'])} {line}"
+    return ipy.magics_manager.magics['cell']['_R'](line, cell)
+
+
+def R_line_width_height(width, height):
+    """
+    Format width/height args for %%R/%R magics
+    """
+    return f"-w{width} -h{height}"
+
+
+def register_R_magics():
+    ipy.magics_manager.magics['line']['_R'] = ipy.magics_manager.magics['line']['R']
+    ipy.magics_manager.magics['cell']['_R'] = ipy.magics_manager.magics['cell']['R']
+    ipy.register_magic_function(R, 'line_cell', 'R')
+
+
+if load_ext_rpy2_ipython():
+    register_R_magics()
 
 
 #

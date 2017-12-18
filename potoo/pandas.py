@@ -1,14 +1,15 @@
 from contextlib import contextmanager
 import os
-import pandas as pd
 import signal
 import subprocess
 import sys
 import types
 
+import pandas as pd
+
 import potoo.numpy
 # from potoo.numpy import _float_format
-from potoo.util import get_rows, get_cols
+from potoo.util import get_cols, get_rows
 
 
 # Mutate these for manual control
@@ -21,7 +22,7 @@ ipykernel_columns          = 120    # For ipython pretty printing (not dfs)
 display_width              = 0  # Default: 80; 0 means use get_terminal_size, ''/None means unlimited
 display_max_rows           = 0  # Default: 60; 0 means use get_terminal_size, ''/None means unlimited
 display_max_columns        = None  # Default: 20
-display_max_colwidth       = lambda cols: 1000  # Default: 50
+display_max_colwidth       = lambda cols: 10000  # Default: 50; go big for dense bq cells
 display_precision          = 3  # Default: 6; better magic than _float_format
 
 
