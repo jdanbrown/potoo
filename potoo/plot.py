@@ -5,9 +5,11 @@ from IPython.core.getipython import get_ipython
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import PIL
 import plotnine
-from plotnine import theme
+from plotnine import aes, ggplot, geom_bar, geom_density, geom_histogram, geom_line, geom_point, theme
+from plotnine.stats.binning import freedman_diaconis_bins
 
 import potoo.mpl_backend_xee
 from potoo.util import puts
@@ -22,12 +24,11 @@ def get_figsize_named(size_name):
     R_aspect = 7/12  # Not sure why this is different than mpl, but it is
     figsizes_mpl = dict(
         # Some common sizes that are useful; add more as necessary
-        inline_short = dict(width=10, aspect_ratio=mpl_aspect / 2),
-        inline       = dict(width=10, aspect_ratio=mpl_aspect * 1),
-        half         = dict(width=10, aspect_ratio=mpl_aspect * 2),
-        full         = dict(width=20, aspect_ratio=mpl_aspect * 1),
-        half_dense   = dict(width=20, aspect_ratio=mpl_aspect * 2),
-        full_dense   = dict(width=40, aspect_ratio=mpl_aspect * 1),
+        inline     = dict(width=10, aspect_ratio=mpl_aspect * 1/2),
+        half       = dict(width=10, aspect_ratio=mpl_aspect * 2),
+        full       = dict(width=20, aspect_ratio=mpl_aspect * 1),
+        half_dense = dict(width=20, aspect_ratio=mpl_aspect * 2),
+        full_dense = dict(width=40, aspect_ratio=mpl_aspect * 1),
     )
     figsizes = dict(
         mpl=figsizes_mpl,
@@ -48,20 +49,6 @@ def plot_set_defaults():
     plot_set_R_defaults()
 
 
-# XXX
-# # Sets mpl + %R figsize
-# def figsize_named(size_name):
-#     size = get_figsize_named(size_name)
-#     # Set mpl figsize (via potoo.plot.figsize)
-#     figsize(name=None, **size['mpl'])
-#     # Set R figsize (via %Rdefaults)
-#     #   - TODO How to compose with user's %Rdefaults?
-#     if ipy:
-#         Rdefaults = ipy.magics_manager.magics['line'].get('Rdefaults')
-#         if Rdefaults:  # TODO Remove conditional after my PR lands
-#             Rdefaults(R_line_width_height(**size['R']))
-
-
 # Only sets mpl figsize [TODO Also set %R figsize: got the necessary scaling factors above, just needs some refactoring]
 def figsize(*args, **kwargs):
     """
@@ -80,19 +67,29 @@ def figsize(*args, **kwargs):
     plotnine.options.aspect_ratio = aspect_ratio
     plotnine.options.dpi = dpi  # (Ignored for figure_format='svg')
     # Set %R figsize (via %Rdefaults)
-    plot_set_R_figsize(width, height)
+    Rdefaults = plot_set_R_figsize(width, height)
+    # Show feedback to user
+    return dict(
+        width=width,
+        height=height,
+        aspect_ratio=aspect_ratio,
+        dpi=dpi,
+        figure_format=ipy.run_line_magic('config', 'InlineBackend.figure_format'),
+        Rdefaults=Rdefaults,
+    )
 
 
 # Sets mpl figsize
-def theme_figsize(name='inline', width=None, aspect_ratio=None, dpi=72):
+def theme_figsize(name='inline', stretch=1, width=None, aspect_ratio=None, dpi=72):
     """
     plotnine theme with defaults for figure_size width + aspect_ratio (which overrides figure_size height if defined):
     - https://plotnine.readthedocs.io/en/stable/generated/plotnine.themes.theme.html#aspect_ratio-and-figure_size
     """
-    if name:
+    if name and not (width and aspect_ratio):
         size = get_figsize_named(name)['mpl']
-        width = size['width']
-        aspect_ratio = size['aspect_ratio']
+        width = width or size['width']
+        aspect_ratio = aspect_ratio or size['aspect_ratio']
+    aspect_ratio *= stretch
     height = width * aspect_ratio
     return theme(
         # height is ignored by plotnine when aspect_ratio is given, but supply anyway so that we can set theme.rcParams
@@ -115,6 +112,62 @@ def plot_set_jupyter_defaults():
     if ipy:
         # 'svg' is pretty, 'retina' is the prettier version of 'png', and 'png' is ugly (on retina macs)
         ipy.run_line_magic('config', "InlineBackend.figure_format = 'svg'")  # 'svg' | 'retina' | 'png'
+
+
+#
+# plotnine
+#
+
+
+def ggbar(*args, **kwargs):
+    kwargs.setdefault('geom', geom_bar)
+    return gg(*args, **kwargs)
+
+
+def gghist(*args, **kwargs):
+    (df, mapping, geom, kwargs) = _gg_resolve_args(*args, **kwargs)
+    kwargs.setdefault('bins', freedman_diaconis_bins(df[mapping['x']]))  # Like stat_bin
+    kwargs.setdefault('geom', geom_histogram)
+    return gg(*args, **kwargs)
+
+
+def ggdens(*args, **kwargs):
+    kwargs.setdefault('geom', geom_density)
+    return gg(*args, **kwargs)
+
+
+def ggpoint(*args, **kwargs):
+    kwargs.setdefault('geom', geom_point)
+    return gg(*args, **kwargs)
+
+
+def ggline(*args, **kwargs):
+    kwargs.setdefault('geom', geom_line)
+    return gg(*args, **kwargs)
+
+
+def gg(*args, **kwargs):
+    (df, mapping, geom, kwargs) = _gg_resolve_args(*args, **kwargs)
+    return ggplot(df, mapping) + geom(**kwargs)
+
+
+def _gg_resolve_args(df_or_series, x: str = None, y: str = None, mapping=None, geom=None, **kwargs):
+    mapping = mapping or aes()
+    if isinstance(df_or_series, pd.Series):
+        df = pd.DataFrame({'x': df_or_series})
+        x = 'x'
+    elif isinstance(df_or_series, pd.DataFrame):
+        df = df_or_series
+    if x: mapping.setdefault('x', x)
+    if y: mapping.setdefault('y', y)
+    return (df, mapping, geom, kwargs)
+
+
+def graph(f, x: np.array) -> pd.DataFrame:
+    return pd.DataFrame({
+        'x': x,
+        'y': f(x),
+    })
 
 
 #
@@ -154,6 +207,7 @@ def plot_set_R_figsize(width, height):
         else:
             # TODO How to not clobber user's %Rdefaults? Would need a way to compose at arg granularity
             Rdefaults(R_line_width_height(width, height))
+            return Rdefaults('')
 
 
 def R(line, cell=None):
@@ -180,8 +234,8 @@ def R_line_width_height(width, height):
 
 
 def register_R_magics():
-    ipy.magics_manager.magics['line']['_R'] = ipy.magics_manager.magics['line']['R']
-    ipy.magics_manager.magics['cell']['_R'] = ipy.magics_manager.magics['cell']['R']
+    ipy.magics_manager.magics['line']['_R'] = ipy.magics_manager.magics['line'].get('R')
+    ipy.magics_manager.magics['cell']['_R'] = ipy.magics_manager.magics['cell'].get('R')
     ipy.register_magic_function(R, 'line_cell', 'R')
 
 
