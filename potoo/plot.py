@@ -12,7 +12,7 @@ from plotnine import aes, ggplot, geom_bar, geom_density, geom_histogram, geom_l
 from plotnine.stats.binning import freedman_diaconis_bins
 
 import potoo.mpl_backend_xee
-from potoo.util import puts
+from potoo.util import puts, singleton
 
 
 ipy = get_ipython()  # None if not in ipython
@@ -49,7 +49,7 @@ def plot_set_defaults():
     plot_set_R_defaults()
 
 
-# Only sets mpl figsize [TODO Also set %R figsize: got the necessary scaling factors above, just needs some refactoring]
+# Only sets mpl figsize
 def figsize(*args, **kwargs):
     """
     Set theme_figsize(...) as global plotnine.options + mpl.rcParams:
@@ -80,7 +80,7 @@ def figsize(*args, **kwargs):
 
 
 # Sets mpl figsize
-def theme_figsize(name='inline', stretch=1, width=None, aspect_ratio=None, dpi=72):
+def theme_figsize(name='inline', width=None, aspect_ratio=None, dpi=72):
     """
     plotnine theme with defaults for figure_size width + aspect_ratio (which overrides figure_size height if defined):
     - https://plotnine.readthedocs.io/en/stable/generated/plotnine.themes.theme.html#aspect_ratio-and-figure_size
@@ -89,7 +89,6 @@ def theme_figsize(name='inline', stretch=1, width=None, aspect_ratio=None, dpi=7
         size = get_figsize_named(name)['mpl']
         width = width or size['width']
         aspect_ratio = aspect_ratio or size['aspect_ratio']
-    aspect_ratio *= stretch
     height = width * aspect_ratio
     return theme(
         # height is ignored by plotnine when aspect_ratio is given, but supply anyway so that we can set theme.rcParams
@@ -200,30 +199,50 @@ def plot_set_R_figsize(width, height):
     Set figsize for %R/%%R magics
     """
     if load_ext_rpy2_ipython():
-        Rdefaults = ipy.magics_manager.magics['line'].get('Rdefaults')
-        # TODO Remove conditional after my PR lands
-        if not Rdefaults:
-            print("Can't set %R figsize: %Rdefaults not found")
+        extend_magic_R_with_defaults.default_line = R_line_width_height(width, height)
+        return extend_magic_R_with_defaults.default_line
+
+
+@singleton
+class extend_magic_R_with_defaults:
+    """
+    Wrapper around %%R/%R that allows defaults
+    """
+
+    def __init__(self):
+        self.default_line = None
+
+    def __call__(self):
+        _R = ipy.magics_manager.magics['cell']['R']
+        def R(line, cell=None):
+            if self.default_line:
+                line = f'{self.default_line} {line}'
+            return _R(line, cell)
+        ipy.register_magic_function(R, 'line_cell', 'R')
+
+
+# TODO Parse short/long opts generically to support all kwargs understood by theme_figsize, like figsize does
+def extend_magic_R_with_sizename():
+    """
+    Wrapper around %%R/%R that allows -s/--size-name
+    """
+    _R = ipy.magics_manager.magics['cell']['R']
+    def R(line, cell=None):
+        import re
+        line = line.strip()
+        # If '-s'/'--size-name' exists, replace the first occurrence with '-w... -h...'
+        match = re.match(r'(.*?)(?:(?:-s\s*|--size-name(?:\s+|=))(\w+\b))(.*)', line)
+        if not match:
+            # No more occurrences, stop
+            return _R(line, cell)
         else:
-            # TODO How to not clobber user's %Rdefaults? Would need a way to compose at arg granularity
-            Rdefaults(R_line_width_height(width, height))
-            return Rdefaults('')
-
-
-def R(line, cell=None):
-    """
-    Wrapper around %%R/%R that allows -s/--size-name. Assumes %R/%%R has been renamed %_R/%%_R
-    """
-    import re
-    line = line.strip()
-    matches = re.match(r'(?:(?:-s\s*|--size-name(?:\s+|=))(\w+\b))?\s*(.*)', line)
-    if not matches:
-        raise ValueError('Failed to parse: %r' % line)
-    [size_name, line] = matches.groups()
-    if size_name:
-        size = get_figsize_named(size_name)
-        line = f"{R_line_width_height(**size['R'])} {line}"
-    return ipy.magics_manager.magics['cell']['_R'](line, cell)
+            # Replace '-s'/'--size-name' with '-w... -h...'
+            [prefix, size_name, suffix] = match.groups()
+            width_height = R_line_width_height(**get_figsize_named(size_name)['R'])
+            line = f"{prefix}{width_height}{suffix}"
+            # Maybe more occurrences, recur
+            return R(line, cell)
+    ipy.register_magic_function(R, 'line_cell', 'R')
 
 
 def R_line_width_height(width, height):
@@ -234,9 +253,8 @@ def R_line_width_height(width, height):
 
 
 def register_R_magics():
-    ipy.magics_manager.magics['line']['_R'] = ipy.magics_manager.magics['line'].get('R')
-    ipy.magics_manager.magics['cell']['_R'] = ipy.magics_manager.magics['cell'].get('R')
-    ipy.register_magic_function(R, 'line_cell', 'R')
+    extend_magic_R_with_defaults()
+    extend_magic_R_with_sizename()
 
 
 if load_ext_rpy2_ipython():
