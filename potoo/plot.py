@@ -12,7 +12,7 @@ from plotnine import aes, ggplot, geom_bar, geom_density, geom_histogram, geom_l
 from plotnine.stats.binning import freedman_diaconis_bins
 
 import potoo.mpl_backend_xee
-from potoo.util import puts, singleton
+from potoo.util import or_else, puts, singleton
 
 
 ipy = get_ipython()  # None if not in ipython
@@ -74,7 +74,7 @@ def figsize(*args, **kwargs):
         height=height,
         aspect_ratio=aspect_ratio,
         dpi=dpi,
-        figure_format=ipy.run_line_magic('config', 'InlineBackend.figure_format'),
+        figure_format=or_else(None, lambda: ipy.run_line_magic('config', 'InlineBackend.figure_format')),
         Rdefaults=Rdefaults,
     )
 
