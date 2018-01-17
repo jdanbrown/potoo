@@ -4,7 +4,8 @@ pillow==5.0.0
 plotnine==0.3.0
 pp-ez==0.2.0
 pprintpp==0.3.0
-rpy2==2.9.1
+# Pin to 2.9.0 to be compatible with conda installs, which doesn't have 2.9.1 yet
+rpy2==2.9.0
 seaborn==0.8.1
 sqlalchemy==1.2.0
 
