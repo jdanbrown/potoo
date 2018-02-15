@@ -1,5 +1,6 @@
 import argparse
 import inspect
+import os
 import time
 
 import datalab.bigquery as bq
@@ -9,6 +10,8 @@ import pandas as pd
 import sqlalchemy as sqla
 from traitlets.config.configurable import Configurable
 from traitlets import Bool, Int, Unicode
+
+from potoo.sqlalchemy import sqla_session
 
 
 # TODO How to generically overlay %config defaults + %foo opts? We currently do it manually everywhere.
@@ -41,6 +44,8 @@ class SQLAMagics(SQLMagics):
     @line_cell_magic
     @magic_arguments()
     @argument('-o', '--out', help='Variable name to store the output in')
+    @argument('-r', '--no-return', action='store_true', help="Don't return result as cell output (useful with -o)")
+    @argument('-T', '--transpose', action='store_true', help='Transpose the output df (return df.T instead of df)')
     @argument('-q', '--quiet', action='store_true', help='Suppress output to stdout')
     @argument('-c', '--conn', help='sqlalchemy connection/session to use')
     @argument('rest', nargs=argparse.REMAINDER)
@@ -53,7 +58,11 @@ class SQLAMagics(SQLMagics):
         code = ' '.join(args.rest + [cell or ''])
 
         # Get db session
-        db_session = self.shell.user_ns[args.conn or self.conn]
+        db_conn = args.conn or self.conn
+        if db_conn in self.shell.user_ns:
+            db_session = self.shell.user_ns.get(db_conn)
+        else:
+            db_session = sqla_session(os.environ[db_conn])
         db_desc = repr(db_session.session_factory.kw['bind'].url)  # repr masks the password, str doesn't
 
         # Run query
@@ -70,7 +79,9 @@ class SQLAMagics(SQLMagics):
         if args.out:
             self.shell.user_ns[args.out] = df
 
-        return df
+        # Return (maybe)
+        if not args.no_return:
+            return df.T if args.transpose else df
 
 
 @magics_class
@@ -91,9 +102,12 @@ class BQMagics(SQLMagics):
     start_row = Int(0).tag(config=True)
     max_rows = Int(None, allow_none=True).tag(config=True)
 
+    # TODO Unify with potoo.bqq.bqq
     @line_cell_magic
     @magic_arguments()
     @argument('-o', '--out', help='Variable name to store the output in')
+    @argument('-r', '--no-return', action='store_true', help="Don't return result as cell output (useful with -o)")
+    @argument('-T', '--transpose', action='store_true', help='Transpose the output df (return df.T instead of df)')
     @argument('-q', '--quiet', action='store_true', help='Suppress output to stdout')
     # TODO Any way to avoid replicating arg names and arg types?
     #   - bq.Query.execute
@@ -135,13 +149,18 @@ class BQMagics(SQLMagics):
         self._print(args.quiet, '[%.0fs, %s]' % (time.time() - start_s, bq_url_for_query(query)))
 
         # Fetch results
+        self._print(args.quiet, 'Fetching results...')
+        start_s = time.time()
         df = query.results.to_dataframe(**to_dataframe_kwargs)
+        self._print(args.quiet, '[%.0fs]' % (time.time() - start_s))
 
         # Store output
         if args.out:
             self.shell.user_ns[args.out] = df
 
-        return df
+        # Return (maybe)
+        if not args.no_return:
+            return df.T if args.transpose else df
 
 
 def bq_url_for_query(query: bq.QueryJob) -> str:
