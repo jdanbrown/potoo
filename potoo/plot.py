@@ -11,7 +11,7 @@ import plotnine
 from plotnine import aes, ggplot, geom_bar, geom_density, geom_histogram, geom_line, geom_point, theme
 from plotnine.stats.binning import freedman_diaconis_bins
 
-import potoo.mpl_backend_xee
+import potoo.mpl_backend_xee  # Used by ~/.matplotlib/matplotlibrc
 from potoo.util import or_else, puts, singleton
 
 
@@ -46,7 +46,17 @@ def plot_set_defaults():
     figsize()
     plot_set_default_mpl_rcParams()
     plot_set_jupyter_defaults()
-    plot_set_R_defaults()
+    # plot_set_R_defaults()  # TODO Re-enable after reinstalling my patch of rpy2
+
+
+def figure_format(figure_format: str = None):
+    """
+    Set figure_format: one of 'svg', 'retina', 'png'
+    """
+    if figure_format:
+        assert figure_format in ['svg', 'retina', 'png'], f'Unknown figure_format[{figure_format}]'
+        ipy.run_line_magic('config', f"InlineBackend.figure_format = {figure_format!r}")
+    return or_else(None, lambda: ipy.run_line_magic('config', 'InlineBackend.figure_format'))
 
 
 # Only sets mpl figsize
@@ -56,6 +66,7 @@ def figsize(*args, **kwargs):
     - https://plotnine.readthedocs.io/en/stable/generated/plotnine.themes.theme.html
     - http://matplotlib.org/users/customizing.html
     """
+    # Passthru to theme_figsize
     t = theme_figsize(*args, **kwargs)
     [width, height] = figure_size = t.themeables['figure_size'].properties['value']
     aspect_ratio = t.themeables['aspect_ratio'].properties['value']
@@ -66,15 +77,16 @@ def figsize(*args, **kwargs):
     plotnine.options.figure_size = figure_size
     plotnine.options.aspect_ratio = aspect_ratio
     plotnine.options.dpi = dpi  # (Ignored for figure_format='svg')
-    # Set %R figsize (via %Rdefaults)
-    Rdefaults = plot_set_R_figsize(width, height)
+    # Set %R figsize (via %rdefaults)
+    # Rdefaults = plot_set_R_figsize(width, height)  # TODO Re-enable after reinstalling my patch of rpy2
+    Rdefaults = None  # XXX
     # Show feedback to user
     return dict(
         width=width,
         height=height,
         aspect_ratio=aspect_ratio,
         dpi=dpi,
-        figure_format=or_else(None, lambda: ipy.run_line_magic('config', 'InlineBackend.figure_format')),
+        figure_format=figure_format(),
         Rdefaults=Rdefaults,
     )
 
@@ -110,7 +122,7 @@ def plot_set_default_mpl_rcParams():
 def plot_set_jupyter_defaults():
     if ipy:
         # 'svg' is pretty, 'retina' is the prettier version of 'png', and 'png' is ugly (on retina macs)
-        ipy.run_line_magic('config', "InlineBackend.figure_format = 'svg'")  # 'svg' | 'retina' | 'png'
+        figure_format('svg')
 
 
 #

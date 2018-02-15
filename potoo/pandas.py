@@ -13,8 +13,9 @@ from potoo.util import get_cols, get_rows
 
 
 # Mutate these for manual control
+#   - https://pandas.pydata.org/pandas-docs/stable/options.html
 #   - TODO In ipykernel you have to manually set_display() after changing any of these
-#       - Workaround: use pd.set_option for the display_*)
+#       - Workaround: use pd.set_option for the display_* settings
 ipykernel_display_max_rows = 1000   # For pd df output
 ipykernel_display_width    = 10000  # For pd df output
 ipykernel_lines            = 75     # Does this affect anything?
@@ -22,7 +23,7 @@ ipykernel_columns          = 120    # For ipython pretty printing (not dfs)
 display_width              = 0  # Default: 80; 0 means use get_terminal_size, ''/None means unlimited
 display_max_rows           = 0  # Default: 60; 0 means use get_terminal_size, ''/None means unlimited
 display_max_columns        = None  # Default: 20
-display_max_colwidth       = lambda cols: 10000  # Default: 50; go big for dense bq cells
+display_max_colwidth       = lambda cols: 200  # Default: 50; go big for dense bq cells
 display_precision          = 3  # Default: 6; better magic than _float_format
 
 
