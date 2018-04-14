@@ -21,7 +21,7 @@ ipy = get_ipython()  # None if not in ipython
 def get_figsize_named(size_name):
     # Determined empirically, and fine-tuned for atom splits with status-bar + tab-bar
     mpl_aspect = 2/3  # Tuned using plotnine, but works the same for mpl/sns
-    R_aspect = 7/12  # Not sure why this is different than mpl, but it is
+    R_aspect = mpl_aspect  # Seems fine
     figsizes_mpl = dict(
         # Some common sizes that are useful; add more as necessary
         inline_short = dict(width=10, aspect_ratio=mpl_aspect * 1/2),
@@ -47,7 +47,7 @@ def plot_set_defaults():
     figsize()
     plot_set_default_mpl_rcParams()
     plot_set_jupyter_defaults()
-    # plot_set_R_defaults()  # TODO Re-enable after reinstalling my patch of rpy2
+    plot_set_R_defaults()
 
 
 def figure_format(figure_format: str = None):
@@ -60,7 +60,6 @@ def figure_format(figure_format: str = None):
     return or_else(None, lambda: ipy.run_line_magic('config', 'InlineBackend.figure_format'))
 
 
-# Only sets mpl figsize
 def figsize(*args, **kwargs):
     """
     Set theme_figsize(...) as global plotnine.options + mpl.rcParams:
@@ -78,9 +77,13 @@ def figsize(*args, **kwargs):
     plotnine.options.figure_size = figure_size
     plotnine.options.aspect_ratio = aspect_ratio
     plotnine.options.dpi = dpi  # (Ignored for figure_format='svg')
-    # Set %R figsize (via %rdefaults)
-    # Rdefaults = plot_set_R_figsize(width, height)  # TODO Re-enable after reinstalling my patch of rpy2
-    Rdefaults = None  # XXX
+    # Set %R figsize
+    Rdefaults = plot_set_R_figsize(
+        width=width,
+        height=height,
+        units='in',  # TODO Does this work with svg? (works with png, at least)
+        res=dpi * 2,  # Make `%Rdevice png` like mpl 'retina' (ignored for `%Rdevice svg`)
+    )
     # Show feedback to user
     return dict(
         width=width,
@@ -92,7 +95,7 @@ def figsize(*args, **kwargs):
     )
 
 
-# Sets mpl figsize
+# For plotnine
 def theme_figsize(name='inline', width=None, aspect_ratio=None, dpi=72):
     """
     plotnine theme with defaults for figure_size width + aspect_ratio (which overrides figure_size height if defined):
@@ -123,7 +126,8 @@ def plot_set_default_mpl_rcParams():
 def plot_set_jupyter_defaults():
     if ipy:
         # 'svg' is pretty, 'retina' is the prettier version of 'png', and 'png' is ugly (on retina macs)
-        figure_format('svg')
+        #   - But the outside world prefers png to svg (e.g. uploading images to github, docs, slides)
+        figure_format('retina')
 
 
 #
@@ -204,18 +208,20 @@ def load_ext_rpy2_ipython():
 
 def plot_set_R_defaults():
     if load_ext_rpy2_ipython():
-        ipy.run_line_magic('Rdevice', 'svg')  # 'svg' | 'png'
+        ipy.run_line_magic('Rdevice', 'png')  # 'png' | 'svg'
+        # ipy.run_line_magic('Rdevice', 'svg')  # FIXME Broken since rpy2-2.9.1
 
 
-def plot_set_R_figsize(width, height):
+def plot_set_R_figsize(**magic_R_args):
     """
     Set figsize for %R/%%R magics
     """
     if load_ext_rpy2_ipython():
-        extend_magic_R_with_defaults.default_line = R_line_width_height(width, height)
+        extend_magic_R_with_defaults.default_line = format_magic_R_args(**magic_R_args)
         return extend_magic_R_with_defaults.default_line
 
 
+# TODO Simpler to use %alias_magic? e.g. https://bitbucket.org/rpy2/rpy2/pull-requests/62
 @singleton
 class extend_magic_R_with_defaults:
     """
@@ -251,18 +257,19 @@ def extend_magic_R_with_sizename():
         else:
             # Replace '-s'/'--size-name' with '-w... -h...'
             [prefix, size_name, suffix] = match.groups()
-            width_height = R_line_width_height(**get_figsize_named(size_name)['R'])
-            line = f"{prefix}{width_height}{suffix}"
+            magic_R_args = format_magic_R_args(**get_figsize_named(size_name)['R'])
+            line = f"{prefix}{magic_R_args}{suffix}"
             # Maybe more occurrences, recur
             return R(line, cell)
     ipy.register_magic_function(R, 'line_cell', 'R')
+    ipy.register_magic_function(_R, 'line_cell', '_R')
 
 
-def R_line_width_height(width, height):
+def format_magic_R_args(**magic_R_args):
     """
     Format width/height args for %%R/%R magics
     """
-    return f"-w{width} -h{height}"
+    return ' '.join(f"--{k}={v}" for k, v in magic_R_args.items())
 
 
 def register_R_magics():
