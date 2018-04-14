@@ -22,7 +22,7 @@ ipykernel_lines            = 75     # Does this affect anything?
 ipykernel_columns          = 120    # For ipython pretty printing (not dfs)
 display_width              = 0  # Default: 80; 0 means use get_terminal_size, ''/None means unlimited
 display_max_rows           = 0  # Default: 60; 0 means use get_terminal_size, ''/None means unlimited
-display_max_columns        = None  # Default: 20
+display_max_columns        = 250  # Default: 20
 display_max_colwidth       = lambda cols: 200  # Default: 50; go big for dense bq cells
 display_precision          = 3  # Default: 6; better magic than _float_format
 
