@@ -66,6 +66,10 @@ def figsize(*args, **kwargs):
     - https://plotnine.readthedocs.io/en/stable/generated/plotnine.themes.theme.html
     - http://matplotlib.org/users/customizing.html
     """
+    # TODO Unwind conflated concerns:
+    #   - (See comment in get_figsize, below)
+    kwargs.pop('_figure_format', None)
+    kwargs.pop('_Rdefaults', None)
     # Passthru to theme_figsize
     t = theme_figsize(*args, **kwargs)
     [width, height] = figure_size = t.themeables['figure_size'].properties['value']
@@ -85,14 +89,30 @@ def figsize(*args, **kwargs):
         res=dpi * 2,  # Make `%Rdevice png` like mpl 'retina' (ignored for `%Rdevice svg`)
     )
     # Show feedback to user
+    return get_figsize()
+
+
+def get_figsize():
     return dict(
-        width=width,
-        height=height,
-        aspect_ratio=aspect_ratio,
-        dpi=dpi,
-        figure_format=figure_format(),
-        Rdefaults=Rdefaults,
+        width=plotnine.options.figure_size[0],
+        aspect_ratio=plotnine.options.aspect_ratio,
+        dpi=plotnine.options.dpi,
+        # TODO Unwind conflated concerns:
+        #   - We return _figure_format/_Rdefaults to the user so they have easy visibility into them
+        #   - But our output is also used as input to figsize(**get_figsize()), so figsize has to filter them out
+        _figure_format=figure_format(),
+        _Rdefaults=plot_get_R_figsize(),
     )
+
+
+@contextmanager
+def with_figsize(*args, **kwargs):
+    saved_kwargs = get_figsize()
+    try:
+        figsize(*args, **kwargs)
+        yield
+    finally:
+        figsize(**saved_kwargs)
 
 
 # For plotnine
@@ -218,6 +238,11 @@ def plot_set_R_figsize(**magic_R_args):
     """
     if load_ext_rpy2_ipython():
         extend_magic_R_with_defaults.default_line = format_magic_R_args(**magic_R_args)
+        return plot_get_R_figsize()
+
+
+def plot_get_R_figsize():
+    if load_ext_rpy2_ipython():
         return extend_magic_R_with_defaults.default_line
 
 
