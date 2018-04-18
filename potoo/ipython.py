@@ -50,45 +50,30 @@ def set_display_on_ipython_prompt():
 @singleton
 class ipy_formats:
 
-    def __init__(self):
-        self._reset_stack = []
+    @property
+    def precision(self):
+        return pd.get_option('display.precision')
 
-    def reset(self):
-        for f in reversed(self._reset_stack):
-            f()
-        self._reset_stack.clear()
-
-    # TODO Fix to respect display.max_rows (currently treats it as unlimited)
-    # pandas: Render lists in df cells as multiple lines
-    # - https://www.safaribooksonline.com/blog/2014/02/11/altering-display-existing-classes-ipython/
-    def df_stack_arrays_in_html(self):
+    # TODO Respect display.max_rows (currently treats it as unlimited)
+    def pd_stack_arrays_in_html(self):
         """
-        When displaying df's as html, display arrays within cells as vertically stacked values (like bq web UI)
+        When displaying df's as html, display arrays within cells as vertically stacked values (inspired by bq web UI)
         - http://ipython.readthedocs.io/en/stable/api/generated/IPython.core.formatters.html
         """
         ipy = get_ipython()
         if ipy:
 
-            prev_html = ipy.display_formatter.formatters['text/html'].for_type(pd.DataFrame, lambda df:
+            ipy.display_formatter.formatters['text/html'].for_type(pd.DataFrame, lambda df:
                 df.apply(axis=0, func=lambda col:
-                    col.apply(lambda x:
-                        (lambda y: y if self._has_number(x) else '<div class="not-number">%s</div>' % y)(
-                            x if not isinstance(x, list)
-                            else '' if len(x) == 0
-                            else pd.Series(x).to_string(index=False).replace('\n', '<br/>')
-                        )
-                    )
+                    col.apply(self._format_html_df_cell)
                 ).to_html(
                     escape=False,  # Allow html in cells
                 )
             )
-            self._reset_stack.append(lambda:
-                ipy.display_formatter.formatters['text/html'].for_type(pd.DataFrame, prev_html) if prev_html
-                else ipy.display_formatter.formatters['text/html'].pop(pd.DataFrame)
-            )
 
-            # TODO Have to self.foo(...) instead of returning...
-            # prev_plain = ipy.display_formatter.formatters['text/plain'].for_type(pd.DataFrame, lambda df, self, cycle:
+            # TODO 'text/plain' for pd.DataFrame
+            #   - TODO Have to self.foo(...) instead of returning... [what did I mean by this a long time ago?]
+            # ipy.display_formatter.formatters['text/plain'].for_type(pd.DataFrame, lambda df, self, cycle:
             #     df.apply(axis=0, func=lambda col:
             #         col.apply(lambda x:
             #             x if not isinstance(x, list)
@@ -97,12 +82,52 @@ class ipy_formats:
             #         )
             #     ).to_string()
             # )
-            # self._reset_stack.append(lambda:
-            #     ipy.display_formatter.formatters['text/plain'].for_type(pd.DataFrame, prev_plain) if prev_plain
-            #     else ipy.display_formatter.formatters['text/plain'].pop(pd.DataFrame)
-            # )
 
-    def _has_number(self, x):
+            # pd.Series doesn't have _repr_html_ or .to_html, like pd.DataFrame does
+            #   - TODO 'text/plain' for pd.Series
+            #       - I briefly tried and nothing happened, so I went with 'text/html' instead; do more research...
+            ipy.display_formatter.formatters['text/html'].for_type(pd.Series, lambda s:
+                # Use <div> instad of <pre>, since <pre> might bring along a lot of style baggage
+                '<div style="white-space: pre">%s</div>' % (
+                    s.apply(self._format_any)
+                )
+            )
+
+    def _format_html_df_cell(self, x: any) -> any:
+
+        if isinstance(x, list):
+            ret = '' if len(x) == 0 else (
+                pd.Series(self._format_any(y) for y in x)
+                .to_string(index=False)
+                .replace('\n', '<br/>')
+            )
+        else:
+            ret = self._format_any(x)
+
+        # HACK A weird thing to help out atom/jupyter styling
+        #   - TODO Should this be: _has_number(ret)? _has_number(x)? _has_number(col) from one frame above?
+        if not self._has_number(ret):
+            ret = '<div class="not-number">%s</div>' % ret
+
+        return ret
+
+    def _format_any(self, x: any) -> any:
+        if np.iscomplexobj(x):
+            return self._round_to_precision_complex(x)
+        else:
+            return x
+
+    # HACK Pandas by default displays complex values with precision 16, even if you np.set_printoptions(precision=...)
+    # and pd.set_option('display.precision', ...). This is a hack to display like precision=3.
+    #   - TODO Submit bug to pandas
+    #   - TODO Make this more sophisticated, e.g. to reuse (or mimic) the magic in numpy.core.arrayprint
+    #   - Return complex, not str, so that e.g. pd.Series displays 'dtype: complex' and not 'dtype: object'
+    def _round_to_precision_complex(self, z: complex) -> complex:
+        # Use complex(...) instead of type(z)(...), since complex parses from str but e.g. np.complex128 doesn't.
+        # Use z.__format___ instead of '%.3g' % ..., since the latter doesn't support complex numbers (dunno why).
+        return complex(z.__format__('.%sg' % self.precision))
+
+    def _has_number(self, x: any) -> bool:
         return (
             np.issubdtype(type(x), np.number) or
             isinstance(x, list) and any(self._has_number(y) for y in x)
