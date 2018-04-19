@@ -112,7 +112,7 @@ class ipy_formats:
         return ret
 
     def _format_any(self, x: any) -> any:
-        if np.iscomplexobj(x):
+        if np.issubdtype(type(x), np.complexfloating):
             return self._round_to_precision_complex(x)
         else:
             return x
