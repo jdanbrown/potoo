@@ -218,6 +218,10 @@ def load_ext_rpy2_ipython():
         try:
             ipy.run_cell(
                 '%%capture\n'
+                # TODO Figure out why $R_HOME isn't set correctly in hydrogen kernel
+                #   - In hydrogen kernel, `%R .libPaths()` -> '/Users/danb/miniconda3/lib/R/library'
+                #   - In jupyter console, `%R .libPaths()` -> '/Users/danb/miniconda3/envs/bubo-features/lib/R/library'
+                "import os, rpy2; os.environ['R_HOME'] = '/'.join(rpy2.__path__[0].split('/')[:-3] + ['R'])\n"
                 '%load_ext rpy2.ipython'
             )
         except:
