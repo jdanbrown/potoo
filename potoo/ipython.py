@@ -11,6 +11,14 @@ import potoo.pandas
 from potoo.util import or_else, singleton
 
 
+def ipy_format(x: any) -> str:
+    """
+    Format like IPython.display.display
+    """
+    formats, metadata = get_ipython().display_formatter.format(x)
+    return formats['text/plain']
+
+
 def is_ipython_console():
     return or_else(None, lambda: get_ipython().__class__.__name__) == 'TerminalInteractiveShell'
 
