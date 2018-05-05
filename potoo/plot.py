@@ -24,12 +24,12 @@ def get_figsize_named(size_name):
     R_aspect = mpl_aspect  # Seems fine
     figsizes_mpl = dict(
         # Some common sizes that are useful; add more as necessary
-        inline_short = dict(width=10, aspect_ratio=mpl_aspect * 1/2),
-        inline       = dict(width=10, aspect_ratio=mpl_aspect * 1),
-        half         = dict(width=10, aspect_ratio=mpl_aspect * 2),
-        full         = dict(width=20, aspect_ratio=mpl_aspect * 1),
-        half_dense   = dict(width=20, aspect_ratio=mpl_aspect * 2),
-        full_dense   = dict(width=40, aspect_ratio=mpl_aspect * 1),
+        inline_short = dict(width=12, aspect_ratio=mpl_aspect * 1/2),
+        inline       = dict(width=12, aspect_ratio=mpl_aspect * 1),
+        half         = dict(width=12, aspect_ratio=mpl_aspect * 2),
+        full         = dict(width=24, aspect_ratio=mpl_aspect * 1),
+        half_dense   = dict(width=24, aspect_ratio=mpl_aspect * 2),
+        full_dense   = dict(width=48, aspect_ratio=mpl_aspect * 1),
     )
     figsizes = dict(
         mpl=figsizes_mpl,
