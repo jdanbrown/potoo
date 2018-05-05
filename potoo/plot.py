@@ -26,6 +26,7 @@ def get_figsize_named(size_name):
         # Some common sizes that are useful; add more as necessary
         inline_short = dict(width=12, aspect_ratio=mpl_aspect * 1/2),
         inline       = dict(width=12, aspect_ratio=mpl_aspect * 1),
+        square       = dict(width=12, aspect_ratio=1),
         half         = dict(width=12, aspect_ratio=mpl_aspect * 2),
         full         = dict(width=24, aspect_ratio=mpl_aspect * 1),
         half_dense   = dict(width=24, aspect_ratio=mpl_aspect * 2),
