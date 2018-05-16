@@ -9,13 +9,6 @@ import time
 import traceback
 
 
-def or_else(x, f):
-    try:
-        return f()
-    except:
-        return x
-
-
 # In pandas, 0 means use get_terminal_size(), ''/None means unlimited
 get_term_size = lambda: shutil.get_terminal_size()  # ($COLUMNS else detect dynamically, $LINES else detect dynamically)  # noqa
 get_rows = lambda: get_term_size().lines            # $LINES else detect dynamically                                      # noqa
@@ -27,8 +20,26 @@ def puts(x):
     return x
 
 
+def dirs(x, _=False, __=False):
+    return {k: getattr(x, k) for k in dir(x) if all([
+        not k.startswith('__') or __,
+        not k.startswith('_') or _,
+    ])}
+# "Tests"
+# print(); pp(list(dirs(x, _=False).keys()))
+# print(); pp(list(dirs(x, __=False).keys()))
+# print(); pp(list(dirs(x).keys()))
+
+
 def singleton(cls):
     return cls()
+
+
+def or_else(x, f):
+    try:
+        return f()
+    except:
+        return x
 
 
 def attrs(**kwargs):
