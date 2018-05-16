@@ -7,8 +7,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import PIL
-import plotnine
-from plotnine import aes, ggplot, geom_bar, geom_density, geom_histogram, geom_line, geom_point, theme
+import plotnine  # For export
+from plotnine import *  # For export
+from plotnine.data import *  # For export
 from plotnine.stats.binning import freedman_diaconis_bins
 
 import potoo.mpl_backend_xee  # Used by ~/.matplotlib/matplotlibrc
