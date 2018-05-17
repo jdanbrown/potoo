@@ -1,6 +1,8 @@
 import collections
 from contextlib import contextmanager
 from datetime import datetime
+from functools import partial
+import numbers
 import os
 import pipes
 import shutil
@@ -117,6 +119,61 @@ def format_duration(secs):
             ms = round(secs % 1, 3)
             res += ('%.3f' % ms)[1:]
         return res
+
+
+def round_sig(x, n):
+    if isinstance(x, numbers.Real):
+        return type(x)(f'%.{n}g' % x)
+    else:
+        # Use complex(...) instead of type(x)(...), since complex parses from str but e.g. np.complex128 doesn't.
+        # Use x.__format___ instead of '%.3g' % ..., since the latter doesn't support complex numbers (dunno why).
+        return complex(x.__format__(f'.{n}g'))
+
+
+def deep_round_sig(x, n):
+    recur = partial(deep_round_sig, n=n)
+    base = partial(round_sig, n=n)
+    if isinstance(x, dict):
+        return type(x)({k: recur(v) for k, v in x.items()})
+    elif isinstance(x, (list, tuple)):
+        return type(x)(map(recur, x))
+    elif _is_np_ndarray(x):
+        # Can't `type(x)(...)` to construct, and have to `list(...)` the iter
+        import numpy as np
+        return np.array(list(map(recur, x)))
+    elif _is_pd_series(x):
+        return x.map(recur)
+    elif _is_pd_dataframe(x):
+        return x.applymap(recur)
+    # TODO Add more...
+    elif isinstance(x, numbers.Number):
+        return base(x)
+    else:
+        return x
+
+
+def _is_np_ndarray(x):
+    try:
+        import numpy as np
+        return isinstance(x, np.ndarray)
+    except ModuleNotFoundError:
+        return False
+
+
+def _is_pd_series(x):
+    try:
+        import pandas as pd
+        return isinstance(x, pd.Series)
+    except ModuleNotFoundError:
+        return False
+
+
+def _is_pd_dataframe(x):
+    try:
+        import pandas as pd
+        return isinstance(x, pd.DataFrame)
+    except ModuleNotFoundError:
+        return False
 
 
 # Do everything manually to avoid weird behaviors in curses impl below
