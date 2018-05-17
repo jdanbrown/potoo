@@ -1,8 +1,8 @@
-from dataclasses import dataclass
 import os
 import signal
 
 from attrdict import AttrDict
+from dataclasses import dataclass
 from IPython.core.getipython import get_ipython
 from IPython.display import *
 import numpy as np
