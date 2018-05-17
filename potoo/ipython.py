@@ -1,6 +1,8 @@
+from dataclasses import dataclass
 import os
 import signal
 
+from attrdict import AttrDict
 from IPython.core.getipython import get_ipython
 from IPython.display import *
 import numpy as np
@@ -8,7 +10,7 @@ import pandas as pd
 import prompt_toolkit
 
 import potoo.pandas
-from potoo.util import or_else, singleton
+from potoo.util import or_else, deep_round_sig, singleton
 
 
 def ipy_format(x: any) -> str:
@@ -56,18 +58,20 @@ def set_display_on_ipython_prompt():
 
 
 @singleton
+@dataclass
 class ipy_formats:
+
+    config = AttrDict(
+        deep_round_sig=True,  # Very useful by default [and hopefully doesn't break anything...]
+        stack_iters=False,  # Useful, but maybe not by default
+    )
 
     @property
     def precision(self):
         return pd.get_option('display.precision')
 
     # TODO Respect display.max_rows (currently treats it as unlimited)
-    def pd_stack_arrays_in_html(self):
-        """
-        When displaying df's as html, display arrays within cells as vertically stacked values (inspired by bq web UI)
-        - http://ipython.readthedocs.io/en/stable/api/generated/IPython.core.formatters.html
-        """
+    def set(self):
         ipy = get_ipython()
         if ipy:
 
@@ -103,7 +107,9 @@ class ipy_formats:
 
     def _format_html_df_cell(self, x: any) -> any:
 
-        if isinstance(x, list):
+        if self.config.stack_iters and isinstance(x, (list, tuple, np.ndarray)):
+            # When displaying df's as html, display list/etc. cells as vertically stacked values (inspired by bq web UI)
+            # - http://ipython.readthedocs.io/en/stable/api/generated/IPython.core.formatters.html
             ret = '' if len(x) == 0 else (
                 pd.Series(self._format_any(y) for y in x)
                 .to_string(index=False)
@@ -120,20 +126,27 @@ class ipy_formats:
         return ret
 
     def _format_any(self, x: any) -> any:
-        if np.issubdtype(type(x), np.complexfloating):
-            return self._round_to_precision_complex(x)
+        if self.config.deep_round_sig:
+            return deep_round_sig(x, self.precision)
         else:
             return x
 
-    # HACK Pandas by default displays complex values with precision 16, even if you np.set_printoptions(precision=...)
-    # and pd.set_option('display.precision', ...). This is a hack to display like precision=3.
-    #   - TODO Submit bug to pandas
-    #   - TODO Make this more sophisticated, e.g. to reuse (or mimic) the magic in numpy.core.arrayprint
-    #   - Return complex, not str, so that e.g. pd.Series displays 'dtype: complex' and not 'dtype: object'
-    def _round_to_precision_complex(self, z: complex) -> complex:
-        # Use complex(...) instead of type(z)(...), since complex parses from str but e.g. np.complex128 doesn't.
-        # Use z.__format___ instead of '%.3g' % ..., since the latter doesn't support complex numbers (dunno why).
-        return complex(z.__format__('.%sg' % self.precision))
+    # XXX Subsumed by deep_round_sig
+    # def _format_any(self, x: any) -> any:
+    #     if np.issubdtype(type(x), np.complexfloating):
+    #         return self._round_to_precision_complex(x)
+    #     else:
+    #         return x
+    #
+    # # HACK Pandas by default displays complex values with precision 16, even if you np.set_printoptions(precision=...)
+    # # and pd.set_option('display.precision', ...). This is a hack to display like precision=3.
+    # #   - TODO Submit bug to pandas
+    # #   - TODO Make this more sophisticated, e.g. to reuse (or mimic) the magic in numpy.core.arrayprint
+    # #   - Return complex, not str, so that e.g. pd.Series displays 'dtype: complex' and not 'dtype: object'
+    # def _round_to_precision_complex(self, z: complex) -> complex:
+    #     # Use complex(...) instead of type(z)(...), since complex parses from str but e.g. np.complex128 doesn't.
+    #     # Use z.__format___ instead of '%.3g' % ..., since the latter doesn't support complex numbers (dunno why).
+    #     return complex(z.__format__('.%sg' % self.precision))
 
     def _has_number(self, x: any) -> bool:
         return (
