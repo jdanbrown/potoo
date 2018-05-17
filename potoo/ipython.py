@@ -101,7 +101,7 @@ class ipy_formats:
             ipy.display_formatter.formatters['text/html'].for_type(pd.Series, lambda s:
                 # Use <div> instad of <pre>, since <pre> might bring along a lot of style baggage
                 '<div style="white-space: pre">%s</div>' % (
-                    s.apply(self._format_any)
+                    s.apply(self._format_any),
                 )
             )
 
@@ -121,7 +121,7 @@ class ipy_formats:
         # HACK A weird thing to help out atom/jupyter styling
         #   - TODO Should this be: _has_number(ret)? _has_number(x)? _has_number(col) from one frame above?
         if not self._has_number(ret):
-            ret = '<div class="not-number">%s</div>' % ret
+            ret = '<div class="not-number">%s</div>' % (ret,)
 
         return ret
 
