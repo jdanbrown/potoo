@@ -362,6 +362,54 @@ def plot_img_via_imshow(data):
         plt.show()
 
 
+# XXX Defunct
+#
+# def plot_plt(
+#     passthru=None,
+#     tight_layout=plt.tight_layout,
+# ):
+#     tight_layout and tight_layout()
+#     plt.show()
+#     return passthru
+#
+#
+# def plot_img(data, basename_suffix=''):
+#     data = _plot_img_cast(data)
+#     with potoo.mpl_backend_xee.basename_suffix(basename_suffix):
+#         return potoo.mpl_backend_xee.imsave_xee(data)
+#
+#
+# def _plot_img_cast(x):
+#     try:
+#         import IPython.core.display
+#         ipython_image_type = IPython.core.display.Image
+#     except:
+#         ipython_image_type = ()  # Empty tuple of types for isinstance, always returns False
+#     if isinstance(x, ipython_image_type):
+#         return PIL.Image.open(x.filename)
+#     else:
+#         return x
+#
+#
+# def plot_img_via_imshow(data):
+#     'Makes lots of distorted pixels, huge PITA, use imsave/plot_img instead'
+#     (h, w) = data.shape[:2]  # (h,w) | (h,w,3)
+#     dpi    = 100
+#     k      = 1  # Have to scale this up to ~4 to avoid distorted pixels
+#     with tmp_rcParams({
+#         'image.interpolation': 'nearest',
+#         'figure.figsize':      puts((w/float(dpi)*k, h/float(dpi)*k)),
+#         'savefig.dpi':         dpi,
+#     }):
+#         img = plt.imshow(data)
+#         img.axes.get_xaxis().set_visible(False)  # Don't create padding for axes
+#         img.axes.get_yaxis().set_visible(False)  # Don't create padding for axes
+#         plt.axis('off')                          # Don't draw axes
+#         plt.tight_layout(pad=0)                  # Don't add padding
+#         plt.show()
+
+
+# XXX Use `with mpl.rc_context(...)` [https://matplotlib.org/api/matplotlib_configuration_api.html]
 @contextmanager
 def tmp_rcParams(kw):
     _save_mpl = mpl.RcParams(**mpl.rcParams)
@@ -376,34 +424,35 @@ def tmp_rcParams(kw):
 
 
 #
-# ggplot
+# yhat/ggplot
 #   - Docs are incomplete but have some helpful examples: http://yhat.github.io/ggplot/docs.html
 #   - Use the source for actual reference: https://github.com/yhat/ggplot
 #
 
 
-def plot_gg(
-    g,
-    tight_layout=None,  # Already does some sort of layout tightening, doing plt.tight_layout() makes it bad
-):
-    # TODO g.title isn't working? And is clobbering basename_suffix somehow?
-    # with potoo.mpl_backend_xee.basename_suffix(g.title or potoo.mpl_backend_xee.basename_suffix.value()):
-    # repr(g)  # (Over)optimized for repl/notebook usage (repr(g) = g.make(); plt.show())
-    # TODO HACK Why doesn't theme_base.__radd__ allow multiple themes to compose?
-    if not isinstance(g.theme, theme_rc):
-        g += theme_rc({}, g.theme)
-    g.make()
-    tight_layout and tight_layout()
-    plt.show()
-    # return g # Don't return to avoid plotting a second time if repl/notebook
-
-
-def gg_sum(*args):
-    "Simpler syntax for lots of ggplot '+' layers when you need to break over many lines, comment stuff out, etc."
-    return reduce(lambda a, b: a + b, args)
-
-
-# TODO Update for plotnine
+# XXX Defunct since switching to plotnine
+#
+# def plot_gg(
+#     g,
+#     tight_layout=None,  # Already does some sort of layout tightening, doing plt.tight_layout() makes it bad
+# ):
+#     # TODO g.title isn't working? And is clobbering basename_suffix somehow?
+#     # with potoo.mpl_backend_xee.basename_suffix(g.title or potoo.mpl_backend_xee.basename_suffix.value()):
+#     # repr(g)  # (Over)optimized for repl/notebook usage (repr(g) = g.make(); plt.show())
+#     # TODO HACK Why doesn't theme_base.__radd__ allow multiple themes to compose?
+#     if not isinstance(g.theme, theme_rc):
+#         g += theme_rc({}, g.theme)
+#     g.make()
+#     tight_layout and tight_layout()
+#     plt.show()
+#     # return g # Don't return to avoid plotting a second time if repl/notebook
+#
+#
+# def gg_sum(*args):
+#     "Simpler syntax for lots of ggplot '+' layers when you need to break over many lines, comment stuff out, etc."
+#     return reduce(lambda a, b: a + b, args)
+#
+#
 # import ggplot as gg
 # class theme_rc(gg.themes.theme):
 #     '''
@@ -463,43 +512,43 @@ def gg_sum(*args):
 #         gg.manual_fill_list = colors   # For aes(fill=...)  + discrete
 #         # ...                          # Any cases I've missed?
 #         return gg
-
-
-class gg_xtight(object):
-
-    def __init__(self, margin=0.05):
-        self.margin = margin
-
-    def __radd__(self, g):
-        g          = deepcopy(g)
-        xs         = g.data[g._aes['x']]
-        lims       = [xs.min(), xs.max()]
-        margin_abs = float(self.margin) * (lims[1] - lims[0])
-        g.xlimits  = [xs.min() - margin_abs, xs.max() + margin_abs]
-        return g
-
-
-class gg_ytight(object):
-
-    def __init__(self, margin=0.05):
-        self.margin = margin
-
-    def __radd__(self, g):
-        g          = deepcopy(g)
-        ys         = g.data[g._aes['y']]
-        lims       = [ys.min(), ys.max()]
-        margin_abs = float(self.margin) * (lims[1] - lims[0])
-        g.ylimits  = [ys.min() - margin_abs, ys.max() + margin_abs]
-        return g
-
-
-class gg_tight(object):
-
-    def __init__(self, margin=0.05):
-        self.margin = margin
-
-    def __radd__(self, g):
-        return g + gg_xtight(self.margin) + gg_ytight(self.margin)
+#
+#
+# class gg_xtight(object):
+#
+#     def __init__(self, margin=0.05):
+#         self.margin = margin
+#
+#     def __radd__(self, g):
+#         g          = deepcopy(g)
+#         xs         = g.data[g._aes['x']]
+#         lims       = [xs.min(), xs.max()]
+#         margin_abs = float(self.margin) * (lims[1] - lims[0])
+#         g.xlimits  = [xs.min() - margin_abs, xs.max() + margin_abs]
+#         return g
+#
+#
+# class gg_ytight(object):
+#
+#     def __init__(self, margin=0.05):
+#         self.margin = margin
+#
+#     def __radd__(self, g):
+#         g          = deepcopy(g)
+#         ys         = g.data[g._aes['y']]
+#         lims       = [ys.min(), ys.max()]
+#         margin_abs = float(self.margin) * (lims[1] - lims[0])
+#         g.ylimits  = [ys.min() - margin_abs, ys.max() + margin_abs]
+#         return g
+#
+#
+# class gg_tight(object):
+#
+#     def __init__(self, margin=0.05):
+#         self.margin = margin
+#
+#     def __radd__(self, g):
+#         return g + gg_xtight(self.margin) + gg_ytight(self.margin)
 
 
 #
