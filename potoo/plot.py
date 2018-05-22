@@ -120,29 +120,49 @@ def with_figsize(*args, **kwargs):
 
 
 # For plotnine
-def theme_figsize(name='inline', width=None, aspect_ratio=None, dpi=72):
+class theme_figsize(theme):
     """
     plotnine theme with defaults for figure_size width + aspect_ratio (which overrides figure_size height if defined):
     - https://plotnine.readthedocs.io/en/stable/generated/plotnine.themes.theme.html#aspect_ratio-and-figure_size
     """
-    if name and not (width and aspect_ratio):
-        size = get_figsize_named(name)['mpl']
-        width = width or size['width']
-        aspect_ratio = aspect_ratio or size['aspect_ratio']
-    height = width * aspect_ratio
-    return theme(
-        # height is ignored by plotnine when aspect_ratio is given, but supply anyway so that we can set theme.rcParams
-        # into mpl.rcParams since the latter has no notion of aspect_ratio [TODO Submit PR to fix]
-        figure_size=[width, height],
-        aspect_ratio=aspect_ratio,
-        dpi=dpi,
-    )
+
+    def __init__(self, name='inline', width=None, height=None, aspect_ratio=None, dpi=72):
+        if name:
+            size = get_figsize_named(name)['mpl']
+            width = width or size.get('width')
+            height = height or size.get('height')
+            aspect_ratio = aspect_ratio or size.get('aspect_ratio')
+        if not width and height and aspect_ratio:
+            width = height / aspect_ratio
+        if width and not height and aspect_ratio:
+            height = width * aspect_ratio
+        if width and height and not aspect_ratio:
+            aspect_ratio = height / width
+        super().__init__(
+            # height is ignored by plotnine when aspect_ratio is given, but supply anyway so that we can set theme.rcParams
+            # into mpl.rcParams since the latter has no notion of aspect_ratio [TODO Submit PR to fix]
+            figure_size=[width, height],
+            aspect_ratio=aspect_ratio,
+            dpi=dpi,
+        )
+
+    @property
+    def rcParams(self):
+        rc = theme.rcParams.fget(self)  # (Idiom to do super() for a property)
+        # Manual retina, since plt.savefig doesn't respond to `%config InlineBackend.figure_format` like plt.show
+        #   - TODO plt.savefig produces 2x bigger imgs than plt.show. Figure out how to achieve 1x with non-blurry fonts
+        if figure_format() == 'retina':
+            if rc['savefig.dpi'] == 'figure':
+                rc['savefig.dpi'] = rc['figure.dpi']
+            rc['savefig.dpi'] *= 2
+        return rc
 
 
 # ~/.matploblib/matploblibrc isn't read by ipykernel, so we call this from ~/.pythonrc which is
 #   - TODO What's the right way to init mpl.rcParams?
 def plot_set_default_mpl_rcParams():
     mpl.rcParams['figure.facecolor'] = 'white'  # Match savefig.facecolor
+    mpl.rcParams['savefig.bbox'] = 'tight'  # Else plt.savefig adds lots of surrounding whitespace that plt.show doesn't
     mpl.rcParams['image.interpolation'] = 'nearest'  # Don't interpolate, show square pixels
     # TODO Sync more carefully with ~/.matploblib/matploblibrc?
 
