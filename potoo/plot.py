@@ -1,6 +1,9 @@
 from contextlib import contextmanager
 from copy import deepcopy
 from functools import reduce
+import tempfile
+
+import IPython.display
 from IPython.core.getipython import get_ipython
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -339,49 +342,51 @@ if load_ext_rpy2_ipython():
 #
 
 
-def plot_plt(
-    passthru=None,
-    tight_layout=plt.tight_layout,
+def plot_to_img(
+    file_prefix=None,
+    file_suffix='.png',
+    **kwargs,
 ):
-    tight_layout and tight_layout()
-    plt.show()
-    return passthru
+    """
+    Make an IPython.display.Image from the current plot
+    """
+    path = tempfile.mktemp(prefix='%s-' % file_prefix, suffix=file_suffix)
+    plt.savefig(path, **kwargs)
+    plt.close()  # Else plt.show() happens automatically [sometimes: with plt.* but not with plotnine...]
+    return IPython.display.Image(filename=path)
 
 
-def plot_img(data, basename_suffix=''):
-    data = _plot_img_cast(data)
-    with potoo.mpl_backend_xee.basename_suffix(basename_suffix):
-        return potoo.mpl_backend_xee.imsave_xee(data)
+def plot_img(
+    X: np.ndarray,
+    **kwargs,
+):
+    """
+    plt.imshow with sane defaults
+    """
+    plt.imshow(X, **{
+        'origin': 'lower',
+        **kwargs,
+    })
 
 
-def _plot_img_cast(x):
-    try:
-        import IPython.core.display
-        ipython_image_type = IPython.core.display.Image
-    except:
-        ipython_image_type = ()  # Empty tuple of types for isinstance, always returns False
-    if isinstance(x, ipython_image_type):
-        return PIL.Image.open(x.filename)
-    else:
-        return x
+def plt_show_img(
+    X: np.ndarray,
+    file_prefix=None,
+    file_suffix='.png',
+    **kwargs,
+):
+    """
+    Plot a 2D array X as an image and then ipy display(Image(...)) the result
 
-
-def plot_img_via_imshow(data):
-    'Makes lots of distorted pixels, huge PITA, use imsave/plot_img instead'
-    (h, w) = data.shape[:2]  # (h,w) | (h,w,3)
-    dpi    = 100
-    k      = 1  # Have to scale this up to ~4 to avoid distorted pixels
-    with tmp_rcParams({
-        'image.interpolation': 'nearest',
-        'figure.figsize':      puts((w/float(dpi)*k, h/float(dpi)*k)),
-        'savefig.dpi':         dpi,
-    }):
-        img = plt.imshow(data)
-        img.axes.get_xaxis().set_visible(False)  # Don't create padding for axes
-        img.axes.get_yaxis().set_visible(False)  # Don't create padding for axes
-        plt.axis('off')                          # Don't draw axes
-        plt.tight_layout(pad=0)                  # Don't add padding
-        plt.show()
+    plt_show_img vs. plt.imshow:
+    - plt_show_img produces an image with the same resolution as the input array, whereas plt.imshow produces a plot
+      with a non-obvious relationship between the input array shape and the output pixel count that's hard to control
+    - plt.imshow gives you a proper plot where you can use titles, axes, subplots, etc., whereas plt_show_img can only
+      produce a raw bitmap from the input array
+    """
+    path = tempfile.mktemp(prefix='%s-' % file_prefix, suffix=file_suffix)
+    plt.imsave(path, X, **kwargs)
+    display(IPython.display.Image(filename=path))
 
 
 # XXX Defunct
