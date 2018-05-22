@@ -127,7 +127,11 @@ def format_duration(secs):
 
 
 def round_sig(x, n):
-    if isinstance(x, numbers.Real):
+    if isinstance(x, numbers.Rational):
+        # Don't touch ints: this is technically incorrect ("round significant digits") but the less surprising behavior
+        # if you expect "round" always means "round floats"
+        return x
+    elif isinstance(x, numbers.Real):
         return type(x)(f'%.{n}g' % x)
     else:
         # Use complex(...) instead of type(x)(...), since complex parses from str but e.g. np.complex128 doesn't.
