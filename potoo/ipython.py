@@ -10,6 +10,7 @@ import pandas as pd
 import prompt_toolkit
 
 import potoo.pandas
+from potoo.pandas import cat_to_str
 from potoo.util import or_else, deep_round_sig, singleton
 
 
@@ -75,13 +76,7 @@ class ipy_formats:
         ipy = get_ipython()
         if ipy:
 
-            ipy.display_formatter.formatters['text/html'].for_type(pd.DataFrame, lambda df:
-                df.apply(axis=0, func=lambda col:
-                    col.apply(self._format_html_df_cell)
-                ).to_html(
-                    escape=False,  # Allow html in cells
-                )
-            )
+            ipy.display_formatter.formatters['text/html'].for_type(pd.DataFrame, self._format_html_df)
 
             # TODO 'text/plain' for pd.DataFrame
             #   - TODO Have to self.foo(...) instead of returning... [what did I mean by this a long time ago?]
@@ -98,12 +93,22 @@ class ipy_formats:
             # pd.Series doesn't have _repr_html_ or .to_html, like pd.DataFrame does
             #   - TODO 'text/plain' for pd.Series
             #       - I briefly tried and nothing happened, so I went with 'text/html' instead; do more research...
-            ipy.display_formatter.formatters['text/html'].for_type(pd.Series, lambda s:
-                # Use <div> instad of <pre>, since <pre> might bring along a lot of style baggage
-                '<div style="white-space: pre">%s</div>' % (
-                    s.apply(self._format_any),
-                )
-            )
+            ipy.display_formatter.formatters['text/html'].for_type(pd.Series, self._format_html_series)
+
+    def _format_html_df(self, df: pd.DataFrame) -> str:
+        return df.apply(axis=0, func=lambda col:
+            # cat_to_str to avoid .apply mapping all cat values, which we don't need and could be slow for large cats
+            col.pipe(cat_to_str).apply(self._format_html_df_cell)
+        ).to_html(
+            escape=False,  # Allow html in cells
+        )
+
+    def _format_html_series(self, s: pd.Series) -> str:
+        # Use <div> instad of <pre>, since <pre> might bring along a lot of style baggage
+        return '<div style="white-space: pre">%s</div>' % (
+            # cat_to_str to avoid .apply mapping all cat values, which we don't need and could be slow for large cats
+            s.pipe(cat_to_str).apply(self._format_any),
+        )
 
     def _format_html_df_cell(self, x: any) -> any:
 
@@ -126,7 +131,11 @@ class ipy_formats:
         return ret
 
     def _format_any(self, x: any) -> any:
-        if self.config.deep_round_sig:
+        if all([
+            self.config.deep_round_sig,
+            # Don't touch np.array's since they can be really huge, and numpy is already smart about truncating them
+            not isinstance(x, np.ndarray),
+        ]):
             return deep_round_sig(x, self.precision)
         else:
             return x
