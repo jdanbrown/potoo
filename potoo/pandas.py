@@ -127,6 +127,7 @@ def df_summary(
     df,
     # Summaries that might have a different dtype than the column they summarize (e.g. count, mean)
     stats=[
+        # Use dtype.name (str) instead of dtype (complicated object that causes trouble)
         ('dtype', lambda df: [dtype.name for dtype in df.dtypes]),
         ('sizeof', lambda df: df.apply(lambda c: humanize.naturalsize(_getsizeof_if_dask(c), binary=True))),
         ('len', lambda df: len(df)),
@@ -147,9 +148,13 @@ def df_summary(
     """A more flexible version of df.describe, with more information by default"""
     stats = [(f, lambda df, f=f: getattr(df, f)()) if isinstance(f, str) else f for f in stats]
     prototypes = [(f, lambda df, f=f: getattr(df, f)()) if isinstance(f, str) else f for f in prototypes]
-    summary_df = pd.DataFrame(OrderedDict({k: f(df) for k, f in prototypes + stats})).T
-    summary_df = summary_df.T.set_index([k for k, f in stats], append=True).T
-    return summary_df
+    return (
+        pd.DataFrame(OrderedDict({k: f(df) for k, f in stats + prototypes})).T
+        # Reorder cols to match input (some aggs like mean/std throw out non-numeric cols, which messes up order)
+        [df.columns]
+        # Pull stats up into col index, so that our col dtypes can match the input col dtypes
+        .T.set_index([k for k, f in stats], append=True).T
+    )
 
 
 def _df_quantile(df, q=.5, interpolation='linear'):
