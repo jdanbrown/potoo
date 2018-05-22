@@ -127,7 +127,7 @@ def df_summary(
     df,
     # Summaries that might have a different dtype than the column they summarize (e.g. count, mean)
     stats=[
-        ('dtype', lambda df: df.dtypes),
+        ('dtype', lambda df: [dtype.name for dtype in df.dtypes]),
         ('sizeof', lambda df: df.apply(lambda c: humanize.naturalsize(_getsizeof_if_dask(c), binary=True))),
         ('len', lambda df: len(df)),
         'count',
@@ -137,21 +137,34 @@ def df_summary(
     ],
     # Summaries that have the same dtype as the column they summarize (e.g. quantile values)
     prototypes=[
-        ('min', lambda df: df.quantile(.0,  numeric_only=False, interpolation='lower')),
-        ('25%', lambda df: df.quantile(.25, numeric_only=False, interpolation='lower')),
-        ('50%', lambda df: df.quantile(.5,  numeric_only=False, interpolation='lower')),
-        ('75%', lambda df: df.quantile(.75, numeric_only=False, interpolation='lower')),
-        ('max', lambda df: df.quantile(1,   numeric_only=False, interpolation='higher')),
+        ('min', lambda df: _df_quantile(df, .0,  interpolation='lower')),
+        ('25%', lambda df: _df_quantile(df, .25, interpolation='lower')),
+        ('50%', lambda df: _df_quantile(df, .5,  interpolation='lower')),
+        ('75%', lambda df: _df_quantile(df, .75, interpolation='lower')),
+        ('max', lambda df: _df_quantile(df, 1,   interpolation='higher')),
     ],
 ):
-    """
-    A more flexible version of df.describe, with more information by default
-    """
+    """A more flexible version of df.describe, with more information by default"""
     stats = [(f, lambda df, f=f: getattr(df, f)()) if isinstance(f, str) else f for f in stats]
     prototypes = [(f, lambda df, f=f: getattr(df, f)()) if isinstance(f, str) else f for f in prototypes]
     summary_df = pd.DataFrame(OrderedDict({k: f(df) for k, f in prototypes + stats})).T
     summary_df = summary_df.T.set_index([k for k, f in stats], append=True).T
     return summary_df
+
+
+def _df_quantile(df, q=.5, interpolation='linear'):
+    """Like pd.DataFrame.quantile but handles ordered categoricals"""
+    return df.apply(
+        func=lambda c: _series_quantile(c, q=q, interpolation=interpolation),
+        reduce=False,  # https://stackoverflow.com/a/34917685/397334
+    )
+
+def _series_quantile(s, *args, **kwargs):
+    """Like pd.Series.quantile but handles ordered categoricals"""
+    if s.dtype.name != 'category':
+        return s.quantile(*args, **kwargs)
+    else:
+        return s.dtype.categories[s.cat.codes.quantile(*args, **kwargs)]
 
 
 def _getsizeof_if_dask(x):
