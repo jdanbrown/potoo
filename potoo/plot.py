@@ -113,6 +113,7 @@ def with_figsize(*args, **kwargs):
     try:
         figsize(*args, **kwargs)
         yield
+        plt.show()  # Because ipython can't evaluate the result of the nested block to force the automatic plt.show()
     finally:
         figsize(**saved_kwargs)
 
