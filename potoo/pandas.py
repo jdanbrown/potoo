@@ -1,15 +1,19 @@
+from collections import OrderedDict
 from contextlib import contextmanager
 import os
 import signal
 import subprocess
 import sys
 import types
+from typing import Callable, Iterable, List
 
+import humanize
+import numpy as np
 import pandas as pd
+from pandas.api.types import CategoricalDtype
 
 import potoo.numpy
-# from potoo.numpy import _float_format
-from potoo.util import get_cols, get_rows
+from potoo.util import get_cols, get_rows, or_else
 
 
 # Mutate these for manual control
@@ -110,12 +114,117 @@ def with_options(options):
             pd.set_option(k, v)
 
 
-def pd_flatmap(df, f):
-    return pd.DataFrame.from_records(
-        y
-        for x in df.itertuples(index=False)
-        for y in f(x)
+# Based on https://github.com/pandas-dev/pandas/issues/8517#issuecomment-247785821
+def df_flatmap(df, f):
+    return pd.DataFrame(
+        row_out
+        for _, row_in in df.iterrows()
+        for row_out in f(row_in)
     )
+
+
+def df_summary(
+    df,
+    # Summaries that might have a different dtype than the column they summarize (e.g. count, mean)
+    stats=[
+        ('dtype', lambda df: df.dtypes),
+        ('sizeof', lambda df: df.apply(lambda c: humanize.naturalsize(_getsizeof_if_dask(c), binary=True))),
+        ('len', lambda df: len(df)),
+        'count',
+        'nunique',
+        'mean',
+        'std',
+    ],
+    # Summaries that have the same dtype as the column they summarize (e.g. quantile values)
+    prototypes=[
+        ('min', lambda df: df.quantile(.0,  numeric_only=False, interpolation='lower')),
+        ('25%', lambda df: df.quantile(.25, numeric_only=False, interpolation='lower')),
+        ('50%', lambda df: df.quantile(.5,  numeric_only=False, interpolation='lower')),
+        ('75%', lambda df: df.quantile(.75, numeric_only=False, interpolation='lower')),
+        ('max', lambda df: df.quantile(1,   numeric_only=False, interpolation='higher')),
+    ],
+):
+    """
+    A more flexible version of df.describe, with more information by default
+    """
+    stats = [(f, lambda df, f=f: getattr(df, f)()) if isinstance(f, str) else f for f in stats]
+    prototypes = [(f, lambda df, f=f: getattr(df, f)()) if isinstance(f, str) else f for f in prototypes]
+    summary_df = pd.DataFrame(OrderedDict({k: f(df) for k, f in prototypes + stats})).T
+    summary_df = summary_df.T.set_index([k for k, f in stats], append=True).T
+    return summary_df
+
+
+def _getsizeof_if_dask(x):
+    """dask.sizeof.getsizeof is more reliable than sys.getsizeof for pandas/numpy objects"""
+    try:
+        import dask.sizeof
+    except:
+        return None
+    else:
+        return dask.sizeof.getsizeof(x)
+
+
+def df_transform_column_names(df: pd.DataFrame, f: Callable[[str], str]) -> pd.DataFrame:
+    df = df.copy()
+    df.columns = [f(c) for c in df.columns]
+    return df
+
+
+def as_ordered_cat(s: pd.Series, ordered_cats: List[str] = None) -> pd.Series:
+    """
+    Map a str series to an ordered category series
+    - If ordered_cats isn't given, list(s) is used (which must produce unique values)
+    """
+    return s.astype(CategoricalDtype(ordered_cats or list(s), ordered=True))
+
+
+def df_cats_to_str(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Map any categorical columns to str columns (see cat_to_str for details)
+    """
+    return df.apply(cat_to_str, axis=0)
+
+
+def cat_to_str(s: pd.Series) -> pd.Series:
+    """
+    If s is a category dtype, map it to a str. This is useful when you want to avoid bottlenecks on large cats:
+    - s.apply(f) will apply f to each value in s _and_ each value in the category, to make the new output category dtype
+    - cat_to_str(s).apply(f) will apply f only to each value in s, since there's no output category dtype to compute
+    """
+    return s.astype('str') if s.dtype.name == 'category' else s
+
+
+def df_transform_cat(df: pd.DataFrame, f: Callable[[List[str]], Iterable[str]], *col_names) -> pd.DataFrame:
+    """
+    Transform the cat.categories values to f(cat.categories) for each category column given in col_names
+    """
+    return df.assign(**{col_name: transform_cat(df[col_name], f) for col_name in col_names})
+
+
+def df_reverse_cat(df: pd.DataFrame, *col_names) -> pd.DataFrame:
+    """
+    Reverse the cat.categories values of each (ordered) category column given in col_names
+    - Useful e.g. for reversing plotnine axes: https://github.com/has2k1/plotnine/issues/116#issuecomment-365911195
+    """
+    return df_transform_cat(df, reversed, *col_names)
+
+
+def transform_cat(s: pd.Series, f: Callable[[List[str]], Iterable[str]]) -> pd.Series:
+    """
+    Transform the category values of a categorical series
+    """
+    return s.astype('str').astype(CategoricalDtype(
+        categories=list(f(s.dtype.categories)),
+        ordered=s.dtype.ordered,
+    ))
+
+
+def reverse_cat(s: pd.Series) -> pd.Series:
+    """
+    Reverse the category values of a categorical series
+    - Useful e.g. for reversing plotnine axes: https://github.com/has2k1/plotnine/issues/116#issuecomment-365911195
+    """
+    return transform_cat(s, reversed)
 
 
 # TODO What's the right way to manage sessions and txns?
