@@ -182,10 +182,19 @@ def _getsizeof_if_dask(x):
         return dask.sizeof.getsizeof(x)
 
 
-def df_transform_column_names(df: pd.DataFrame, f: Callable[[str], str]) -> pd.DataFrame:
+def df_reorder_cols(df: pd.DataFrame, first: List[str] = [], last: List[str] = []) -> pd.DataFrame:
+    first_last = set(first) | set(last)
+    return df.reindex(columns=first + [c for c in df.columns if c not in first_last] + last)
+
+
+def df_transform_columns(df: pd.DataFrame, f: Callable[[List[str]], List[str]]) -> pd.DataFrame:
     df = df.copy()
-    df.columns = [f(c) for c in df.columns]
+    df.columns = f(df.columns)
     return df
+
+
+def df_transform_column_names(df: pd.DataFrame, f: Callable[[str], str]) -> pd.DataFrame:
+    return df_transform_columns(df, lambda cs: [f(c) for c in df.columns])
 
 
 def as_ordered_cat(s: pd.Series, ordered_cats: List[str] = None) -> pd.Series:
