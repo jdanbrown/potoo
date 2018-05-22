@@ -44,6 +44,11 @@ def or_else(x, f):
         return x
 
 
+def raise_(e):
+    """Raise in an expression instead of a statement"""
+    raise e
+
+
 def attrs(**kwargs):
     [keys, values] = list(zip(*kwargs.items())) or [[], []]
     return collections.namedtuple('attrs', keys)(*values)
