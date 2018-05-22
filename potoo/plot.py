@@ -97,6 +97,7 @@ def figsize(*args, **kwargs):
 def get_figsize():
     return dict(
         width=plotnine.options.figure_size[0],
+        height=plotnine.options.figure_size[1],
         aspect_ratio=plotnine.options.aspect_ratio,
         dpi=plotnine.options.dpi,
         # TODO Unwind conflated concerns:
