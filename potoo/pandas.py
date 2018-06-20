@@ -1,11 +1,12 @@
 from collections import OrderedDict
 from contextlib import contextmanager
+from functools import partial, wraps
 import os
 import signal
 import subprocess
 import sys
 import types
-from typing import Callable, Iterable, List
+from typing import Callable, Iterable, List, Union
 
 import humanize
 import numpy as np
@@ -15,6 +16,9 @@ from pandas.api.types import CategoricalDtype
 import potoo.numpy
 from potoo.util import get_cols, get_rows, or_else
 
+# Convenient shorthands for interactive use, but not recommended for real code that needs to be readable and maintanable
+DF = pd.DataFrame
+S = pd.Series
 
 # Mutate these for manual control
 #   - https://pandas.pydata.org/pandas-docs/stable/options.html
@@ -115,26 +119,36 @@ def with_options(options):
 
 
 # Based on https://github.com/pandas-dev/pandas/issues/8517#issuecomment-247785821
-def df_flatmap(df, f):
+def df_flatmap(df: pd.DataFrame, f: Callable[['Row'], Union[pd.DataFrame, Iterable['Row']]]) -> pd.DataFrame:
     return pd.DataFrame(
-        row_out
+        OrderedDict(row_out)
         for _, row_in in df.iterrows()
-        for row_out in f(row_in)
+        for f_out in [f(row_in)]
+        for row_out in (
+            (row_out for i, row_out in f_out.iterrows()) if isinstance(f_out, pd.DataFrame) else
+            f_out
+        )
     )
 
 
 def df_summary(
-    df,
+    # A df, or a series that will be coerced into a 1-col df
+    df: Union[pd.DataFrame, pd.Series],
     # Summaries that might have a different dtype than the column they summarize (e.g. count, mean)
     stats=[
         # Use dtype.name (str) instead of dtype (complicated object that causes trouble)
         ('dtype', lambda df: [dtype.name for dtype in df.dtypes]),
-        ('sizeof', lambda df: df.apply(lambda c: humanize.naturalsize(_getsizeof_if_dask(c), binary=True))),
+        # ('sizeof', lambda df: _sizeof_df_cols(df).map(partial(humanize.naturalsize, binary=True))),
+        ('sizeof', lambda df: _sizeof_df_cols(df)),
         ('len', lambda df: len(df)),
         'count',
-        'nunique',
-        'mean',
-        'std',
+        # df.apply + or_else to handle unhashable types
+        ('nunique', lambda df: df.apply(lambda c: or_else(np.nan, lambda: c.nunique()))),
+        # df.apply + or_else these else they subset the cols to just the numerics, which quietly messes up col ordering
+        #   - reduce=False else all dtypes are 'object' [https://stackoverflow.com/a/34917685/397334]
+        #   - dtype.base else 'category' dtypes break np.issubdtype [https://github.com/pandas-dev/pandas/issues/9581]
+        ('mean', lambda df: df.apply(reduce=False, func=lambda c: c.mean() if np.issubdtype(c.dtype.base, np.number) else np.nan)),
+        ('std',  lambda df: df.apply(reduce=False, func=lambda c: c.std()  if np.issubdtype(c.dtype.base, np.number) else np.nan)),
     ],
     # Summaries that have the same dtype as the column they summarize (e.g. quantile values)
     prototypes=[
@@ -146,6 +160,8 @@ def df_summary(
     ],
 ):
     """A more flexible version of df.describe, with more information by default"""
+    if isinstance(df, pd.Series):
+        df = pd.DataFrame(df)
     stats = [(f, lambda df, f=f: getattr(df, f)()) if isinstance(f, str) else f for f in stats]
     prototypes = [(f, lambda df, f=f: getattr(df, f)()) if isinstance(f, str) else f for f in prototypes]
     return (
@@ -160,31 +176,41 @@ def df_summary(
 def _df_quantile(df, q=.5, interpolation='linear'):
     """Like pd.DataFrame.quantile but handles ordered categoricals"""
     return df.apply(
-        func=lambda c: _series_quantile(c, q=q, interpolation=interpolation),
-        reduce=False,  # https://stackoverflow.com/a/34917685/397334
+        lambda c: _series_quantile(c, q=q, interpolation=interpolation),
+        reduce=False,  # Else all dtypes are 'object' [https://stackoverflow.com/a/34917685/397334]
     )
 
 def _series_quantile(s, *args, **kwargs):
     """Like pd.Series.quantile but handles ordered categoricals"""
-    if s.dtype.name != 'category':
-        return s.quantile(*args, **kwargs)
+    if s.dtype.name == 'category':
+        cat_code = s.cat.codes.quantile(*args, **kwargs)
+        return s.dtype.categories[cat_code] if cat_code != -1 else None
     else:
-        return s.dtype.categories[s.cat.codes.quantile(*args, **kwargs)]
+        try:
+            return s.quantile(*args, **kwargs)
+        except:
+            # e.g. a column of non-uniform np.array's will fail like:
+            #   ValueError: operands could not be broadcast together with shapes (6599624,) (459648,)
+            return np.nan
 
 
-def _getsizeof_if_dask(x):
-    """dask.sizeof.getsizeof is more reliable than sys.getsizeof for pandas/numpy objects"""
+def _sizeof_df_cols(df: pd.DataFrame) -> 'Column[int]':
+    """
+    sizeof is hard, but make our best effort:
+    - Use dask.sizeof.sizeof instead of sys.getsizeof, since the latter is unreliable for pandas/numpy objects
+    - Use df.applymap, since dask.sizeof.sizeof appears to not do this right [why? seems wrong...]
+    """
     try:
         import dask.sizeof
     except:
-        return None
+        return df.apply(lambda c: None)
     else:
-        return dask.sizeof.getsizeof(x)
+        return df.applymap(dask.sizeof.sizeof).sum()
 
 
 def df_reorder_cols(df: pd.DataFrame, first: List[str] = [], last: List[str] = []) -> pd.DataFrame:
     first_last = set(first) | set(last)
-    return df.reindex(columns=first + [c for c in df.columns if c not in first_last] + last)
+    return df.reindex(columns=list(first) + [c for c in df.columns if c not in first_last] + list(last))
 
 
 def df_transform_columns(df: pd.DataFrame, f: Callable[[List[str]], List[str]]) -> pd.DataFrame:
@@ -197,6 +223,39 @@ def df_transform_column_names(df: pd.DataFrame, f: Callable[[str], str]) -> pd.D
     return df_transform_columns(df, lambda cs: [f(c) for c in df.columns])
 
 
+def df_transform_index(df: pd.DataFrame, f: Callable[[List[str]], List[str]]) -> pd.DataFrame:
+    df = df.copy()
+    df.index = f(df.index)
+    return df
+
+
+def df_remove_unused_categories(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Do col.remove_unused_categories() for all categorical columns
+    """
+    return (df.assign(**{
+        k: df[k].cat.remove_unused_categories()
+        for k in df.columns
+        if df[k].dtype.name == 'category'
+    }))
+
+
+def df_ordered_cat(df: pd.DataFrame, *args, transform=lambda x: x, **kwargs) -> pd.DataFrame:
+    """
+    Map many str series to ordered category series
+    """
+    cats = dict(
+        **{k: lambda df: df[k].unique() for k in args},
+        **kwargs,
+    )
+    return (df.assign(**{
+        k: as_ordered_cat(df[k], list(transform(
+            x(df) if isinstance(x, types.FunctionType) else x
+        )))
+        for k, x in cats.items()
+    }))
+
+
 def as_ordered_cat(s: pd.Series, ordered_cats: List[str] = None) -> pd.Series:
     """
     Map a str series to an ordered category series
@@ -205,7 +264,7 @@ def as_ordered_cat(s: pd.Series, ordered_cats: List[str] = None) -> pd.Series:
     return s.astype(CategoricalDtype(ordered_cats or list(s), ordered=True))
 
 
-def df_cats_to_str(df: pd.DataFrame) -> pd.DataFrame:
+def df_cat_to_str(df: pd.DataFrame) -> pd.DataFrame:
     """
     Map any categorical columns to str columns (see cat_to_str for details)
     """
@@ -252,6 +311,54 @@ def reverse_cat(s: pd.Series) -> pd.Series:
     - Useful e.g. for reversing plotnine axes: https://github.com/has2k1/plotnine/issues/116#issuecomment-365911195
     """
     return transform_cat(s, reversed)
+
+
+def df_ensure(df, **kwargs):
+    """
+    df.assign only the columns that aren't already present
+    """
+    return df.assign(**{
+        k: v
+        for k, v in kwargs.items()
+        if k not in df
+    })
+    return df
+
+
+# XXX Obviated by df_ensure?
+# def produces_cols(*cols):
+#     cols = [c for c in cols if c != ...]
+#     def decorator(f):
+#         @wraps(f)
+#         def g(*args, **kwargs) -> pd.DataFrame:
+#             df = _find_df_in_args(*args, **kwargs)
+#             _refresh = kwargs.pop('_refresh', False)
+#             if _refresh or not cols or any(c not in df for c in cols):
+#                 df = f(*args, **kwargs)
+#             return df
+#         return g
+#     return decorator
+
+
+def requires_cols(*cols):
+    cols = [c for c in cols if c != ...]
+    def decorator(f):
+        @wraps(f)
+        def g(*args, **kwargs) -> any:
+            df = _find_df_in_args(*args, **kwargs)
+            if any(c not in df for c in cols):
+                raise ValueError(f'Expected cols[{cols}] in df.columns[{df.columns}]')
+            return f(*args, **kwargs)
+        return g
+    return decorator
+
+
+def _find_df_in_args(*args, **kwargs):
+    for x in [*args, *kwargs.values()]:
+        if isinstance(x, pd.DataFrame):
+            return x
+    else:
+        raise ValueError('No df found in args')
 
 
 # TODO What's the right way to manage sessions and txns?

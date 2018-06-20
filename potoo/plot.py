@@ -65,12 +65,40 @@ def figure_format(figure_format: str = None):
     return or_else(None, lambda: ipy.run_line_magic('config', 'InlineBackend.figure_format'))
 
 
+# XXX if the new version of figsize works
+# @contextmanager
+# def with_figsize(*args, **kwargs):
+#     saved_kwargs = get_figsize()
+#     try:
+#         figsize(*args, **kwargs)
+#         yield
+#         plt.show()  # Because ipy can't evaluate the result of the nested block to force the automatic plt.show()
+#     finally:
+#         figsize(**saved_kwargs)
+
+
 def figsize(*args, **kwargs):
     """
     Set theme_figsize(...) as global plotnine.options + mpl.rcParams:
     - https://plotnine.readthedocs.io/en/stable/generated/plotnine.themes.theme.html
     - http://matplotlib.org/users/customizing.html
+
+    Can be used either as a global mutation (`figsize(...)`) or a context manager (`with figsize(...)`)
     """
+    to_restore = get_figsize()
+    _set_figsize(*args, **kwargs)
+    @contextmanager
+    def ctx():
+        try:
+            yield
+            plt.show()  # Because ipy can't evaluate the result of the nested block to force the automatic plt.show()
+        finally:
+            # TODO RESTORE
+            figsize(**to_restore)
+    return ctx()
+
+
+def _set_figsize(*args, **kwargs):
     # TODO Unwind conflated concerns:
     #   - (See comment in get_figsize, below)
     kwargs.pop('_figure_format', None)
@@ -109,17 +137,6 @@ def get_figsize():
         _figure_format=figure_format(),
         _Rdefaults=plot_get_R_figsize(),
     )
-
-
-@contextmanager
-def with_figsize(*args, **kwargs):
-    saved_kwargs = get_figsize()
-    try:
-        figsize(*args, **kwargs)
-        yield
-        plt.show()  # Because ipython can't evaluate the result of the nested block to force the automatic plt.show()
-    finally:
-        figsize(**saved_kwargs)
 
 
 # For plotnine
@@ -342,11 +359,7 @@ if load_ext_rpy2_ipython():
 #
 
 
-def plot_to_img(
-    file_prefix=None,
-    file_suffix='.png',
-    **kwargs,
-):
+def plot_to_img(file_prefix=None, file_suffix='.png', **kwargs):
     """
     Make an IPython.display.Image from the current plot
     """
@@ -356,37 +369,44 @@ def plot_to_img(
     return IPython.display.Image(filename=path)
 
 
-def plot_img(
-    X: np.ndarray,
-    **kwargs,
-):
+def plot_img(X: np.ndarray, **kwargs):
     """
     plt.imshow with sane defaults
     """
-    plt.imshow(X, **{
-        'origin': 'lower',
-        **kwargs,
-    })
+    kwargs.setdefault('origin', 'lower')  # Sane default
+    plt.imshow(X, **kwargs)
 
 
-def plt_show_img(
+def show_img(
     X: np.ndarray,
     file_prefix=None,
     file_suffix='.png',
+    scale=None,
     **kwargs,
 ):
     """
     Plot a 2D array X as an image and then ipy display(Image(...)) the result
 
-    plt_show_img vs. plt.imshow:
-    - plt_show_img produces an image with the same resolution as the input array, whereas plt.imshow produces a plot
-      with a non-obvious relationship between the input array shape and the output pixel count that's hard to control
-    - plt.imshow gives you a proper plot where you can use titles, axes, subplots, etc., whereas plt_show_img can only
+    show_img vs. plt.imshow:
+    - show_img produces an image with the same resolution as the input array, whereas plt.imshow produces a plot with a
+      non-obvious relationship between the input array shape and the output pixel count that's hard to control
+    - plt.imshow gives you a proper plot where you can use titles, axes, subplots, etc., whereas show_img can only
       produce a raw bitmap from the input array
     """
+    kwargs.setdefault('origin', 'upper')  # Sane default: image is oriented like print(X)
     path = tempfile.mktemp(prefix='%s-' % file_prefix, suffix=file_suffix)
     plt.imsave(path, X, **kwargs)
-    display(IPython.display.Image(filename=path))
+
+    # XXX Can't resize IPython.display.Image
+    # display(IPython.display.Image(filename=path))
+
+    # Can resize PIL.Image
+    image = PIL.Image.open(path)
+    if scale:
+        if isinstance(scale, (int, float)):
+            scale = (scale, scale)
+        image = image.resize(np.array(image.size) * scale)
+    display(image)
 
 
 # XXX Defunct

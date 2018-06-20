@@ -1,5 +1,8 @@
+import gc
 import os
+import random
 import signal
+import time
 
 from attrdict import AttrDict
 from dataclasses import dataclass
@@ -56,6 +59,27 @@ def set_display_on_ipython_prompt():
             _warn_deprecated=False,
             hook=lambda *args: potoo.pandas.set_display(),
         )
+
+
+def gc_on_ipy_post_run_cell():
+    """
+    Force gc after each ipy cell run, since it's _really_ easy to accumulate many uncollected-but-collectable GBs of mem
+    pressure by re-executing one heavy cell over and over again
+    - Adds ballpark ~40ms per cell execution
+    - Use in combination with ipy `c.InteractiveShell.cache_size = 0` (see ~/.ipython/profile_default/ipython_config.py)
+    """
+    ipy = get_ipython()
+    if ipy:  # None if not ipython
+        # gc.collect() takes ballpark ~40ms, so avoid running it every single time
+        def pre_run_cell(info):
+            info.start_s = time.time()
+        def post_run_cell(result):
+            if hasattr(result.info, 'start_s'):
+                elapsed_s = time.time() - result.info.start_s
+                if elapsed_s > .5 or random.random() < 1/20:
+                    gc.collect()
+        ipy.events.register('pre_run_cell', pre_run_cell)
+        ipy.events.register('post_run_cell', post_run_cell)
 
 
 @singleton

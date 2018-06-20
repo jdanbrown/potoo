@@ -37,6 +37,14 @@ def singleton(cls):
     return cls()
 
 
+def strip_startswith(s: str, startswith: str) -> str:
+    return s[len(startswith):] if s.startswith(startswith) else s
+
+
+def strip_endswith(s: str, endswith: str) -> str:
+    return s[:len(endswith)] if s.endswith(endswith) else s
+
+
 def or_else(x, f):
     try:
         return f()
@@ -49,9 +57,46 @@ def raise_(e):
     raise e
 
 
-def attrs(**kwargs):
-    [keys, values] = list(zip(*kwargs.items())) or [[], []]
-    return collections.namedtuple('attrs', keys)(*values)
+# XXX Use AttrDict
+# def attrs(**kwargs):
+#     [keys, values] = list(zip(*kwargs.items())) or [[], []]
+#     return collections.namedtuple('attrs', keys)(*values)
+
+
+class AttrContext:
+    """Expose an object's attrs as a context manager. Useful for global singleton config objects."""
+
+    @contextmanager
+    def context(self, **attrs):
+        self._raise_on_unknown_attrs(attrs)
+        to_restore = {k: v for k, v in self.__dict__.items() if k in attrs}  # Don't overwrite unrelated mutations
+        self.__dict__.update(attrs)
+        try:
+            yield
+        finally:
+            self.__dict__.update(to_restore)
+
+    def __call__(self, **attrs):
+        """Like .set when called, like .context when used in a `with`"""
+        self._raise_on_unknown_attrs(attrs)
+        to_restore = {k: v for k, v in self.__dict__.items() if k in attrs}  # Don't overwrite unrelated mutations
+        self.__dict__.update(attrs)
+        @contextmanager
+        def ctx():
+            try:
+                yield
+            finally:
+                self.__dict__.update(to_restore)
+        return ctx()
+
+    def set(self, **attrs):
+        self._raise_on_unknown_attrs(attrs)
+        self.__dict__.update(attrs)
+
+    def _raise_on_unknown_attrs(self, attrs):
+        unknown = {k: v for k, v in attrs.items() if k not in self.__dict__}
+        if unknown:
+            raise ValueError(f'Unknown attrs: {unknown}')
 
 
 def shell(cmd):
@@ -77,14 +122,13 @@ def timed_format(f, **kwargs):
     return elapsed, x
 
 
-def timed(f, if_error_return='exception'):
+def timed(f, *args, finally_=lambda elapsed_s: None, **kwargs):
     start_s = time.time()
     try:
-        x = f()
-    except Exception as e:
-        traceback.print_exc()
-        x = e if if_error_return == 'exception' else if_error_return
-    elapsed_s = time.time() - start_s
+        x = f(*args, **kwargs)
+    finally:
+        elapsed_s = time.time() - start_s
+        finally_(elapsed_s)
     return elapsed_s, x
 
 
@@ -183,6 +227,11 @@ def _is_pd_dataframe(x):
         return isinstance(x, pd.DataFrame)
     except ModuleNotFoundError:
         return False
+
+
+#
+# watch (requires curses)
+#
 
 
 # Do everything manually to avoid weird behaviors in curses impl below
