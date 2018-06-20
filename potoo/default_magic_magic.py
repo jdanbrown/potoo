@@ -182,8 +182,12 @@ class DefaultMagicTransformer(InputTransformer):
 
 def _debug(event, **kwargs):
     from IPython.display import display
-    import crayons
-    color = crayons.black
+    try:
+        import crayons
+    except:
+        color = lambda x: x
+    else:
+        color = crayons.black
     # print(color(f'[{event}]{"" if not kwargs else " " + ipy_format(kwargs)}'))
 
 
