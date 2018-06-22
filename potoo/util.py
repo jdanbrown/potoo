@@ -37,12 +37,22 @@ def singleton(cls):
     return cls()
 
 
-def strip_startswith(s: str, startswith: str) -> str:
-    return s[len(startswith):] if s.startswith(startswith) else s
+def strip_startswith(s: str, startswith: str, check=False) -> str:
+    if s.startswith(startswith):
+        return s[len(startswith):]
+    else:
+        if check:
+            raise ValueError(f"s[{s!r}] doesn't start with startswith[{startswith!r}]")
+        return s
 
 
-def strip_endswith(s: str, endswith: str) -> str:
-    return s[:len(endswith)] if s.endswith(endswith) else s
+def strip_endswith(s: str, endswith: str, check=False) -> str:
+    if s.endswith(endswith):
+        return s[:len(endswith)]
+    else:
+        if check:
+            raise ValueError(f"s[{s!r}] doesn't end with endswith[{endswith!r}]")
+        return s
 
 
 def or_else(x, f):
