@@ -77,4 +77,9 @@ else:
     # Code ref:
     #   - https://github.com/tommikaikkonen/prettyprinter/blob/master/prettyprinter/extras/ipython.py
     #
-    get_ipython().highlighting_style = 'legacy'
+    try:
+        from IPython import get_ipython
+    except:
+        pass
+    else:
+        get_ipython().highlighting_style = 'legacy'
