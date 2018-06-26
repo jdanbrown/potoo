@@ -5,7 +5,9 @@ from functools import partial
 import numbers
 import os
 import pipes
+import shlex
 import shutil
+import subprocess
 import sys
 import time
 import traceback
