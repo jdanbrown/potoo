@@ -1,5 +1,5 @@
 attrdict==2.0.0
-dataclasses==0.5
+dataclasses==0.6
 humanize==0.5.1
 matplotlib==2.1.1
 pandas==0.23.0
@@ -7,8 +7,7 @@ pillow==5.0.0
 plotnine==0.3.0
 pp-ez==0.2.0
 pprintpp==0.3.0
-# Pin to 2.9.0 to be compatible with conda installs, which doesn't have 2.9.1 yet
-rpy2==2.9.0
+rpy2==2.9.3
 seaborn==0.8.1
 sqlalchemy==1.2.0
 
