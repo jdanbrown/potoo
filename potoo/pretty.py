@@ -82,4 +82,6 @@ else:
     except:
         pass
     else:
-        get_ipython().highlighting_style = 'legacy'
+        ipy = get_ipython()
+        if ipy:
+            ipy.highlighting_style = 'legacy'
