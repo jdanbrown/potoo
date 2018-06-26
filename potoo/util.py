@@ -109,11 +109,13 @@ class AttrContext:
             raise ValueError(f'Unknown attrs: {unknown}')
 
 
-def shell(cmd):
-    print('shell: cmd[%s]' % cmd, file=sys.stderr)
-    status = os.system(cmd)
-    if status != 0:
-        raise Exception('Exit status[%s] from cmd[%s]' % (status, cmd))
+def shell(cmd, **kwargs):
+    cmd = cmd % {
+        k: shlex.quote(str(v))
+        for k, v in kwargs.items()
+    }
+    print(f'$ {cmd}', file=sys.stderr)
+    return subprocess.run(cmd, shell=True, check=True)
 
 
 def mkdir_p(dir):
