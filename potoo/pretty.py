@@ -64,3 +64,17 @@ else:
         )
 
     _pp.install_extras(warn_on_error=False, exclude=exclude)
+
+    # HACK Avoid error that triggers in a remote ipykernel (repro: `jupyter kernelgateway` in bubo docker container) but
+    # not a local ipykernel:
+    #   Traceback (most recent call last):
+    #     File "/opt/conda/lib/python3.6/site-packages/IPython/core/formatters.py", line 702, in __call__
+    #       printer.pretty(obj)
+    #     File "/opt/conda/lib/python3.6/site-packages/prettyprinter/extras/ipython.py", line 57, in pretty
+    #       ipy.highlighting_style,
+    #   AttributeError: 'ZMQInteractiveShell' object has no attribute 'highlighting_style'
+    #
+    # Code ref:
+    #   - https://github.com/tommikaikkonen/prettyprinter/blob/master/prettyprinter/extras/ipython.py
+    #
+    get_ipython().highlighting_style = 'legacy'
