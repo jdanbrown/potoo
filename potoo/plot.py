@@ -184,6 +184,14 @@ def plot_set_default_mpl_rcParams():
     mpl.rcParams['figure.facecolor'] = 'white'  # Match savefig.facecolor
     mpl.rcParams['savefig.bbox'] = 'tight'  # Else plt.savefig adds lots of surrounding whitespace that plt.show doesn't
     mpl.rcParams['image.interpolation'] = 'nearest'  # Don't interpolate, show square pixels
+    # http://matplotlib.org/users/colormaps.html
+    # - TODO Looks like no way to set default colormap for pandas df.plot? [yes, but hacky: https://stackoverflow.com/a/41598326/397334]
+    mpl.rcParams['image.cmap'] = 'magma_r'    # [2] perceptually uniform (light -> dark)
+    # mpl.rcParams['image.cmap'] = 'inferno_r'  # [2] perceptually uniform (light -> dark)
+    # mpl.rcParams['image.cmap'] = 'magma'      # [2] perceptually uniform (dark -> light)
+    # mpl.rcParams['image.cmap'] = 'inferno'    # [2] perceptually uniform (dark -> light)
+    # mpl.rcParams['image.cmap'] = 'Greys'      # [2] black-white (nonlinear)
+    # mpl.rcParams['image.cmap'] = 'gray_r'     # [1] black-white
     # TODO Sync more carefully with ~/.matploblib/matploblibrc?
 
 
