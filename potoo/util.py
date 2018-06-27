@@ -57,6 +57,14 @@ def strip_endswith(s: str, endswith: str, check=False) -> str:
         return s
 
 
+def ensure_startswith(s: str, startswith: str) -> str:
+    return s if s.startswith(startswith) else startswith + s
+
+
+def ensure_endswith(s: str, endswith: str) -> str:
+    return s if s.endswith(endswith) else s + endswith
+
+
 def or_else(x, f):
     try:
         return f()
