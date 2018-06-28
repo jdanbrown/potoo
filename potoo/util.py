@@ -19,9 +19,13 @@ get_rows = lambda: get_term_size().lines            # $LINES else detect dynamic
 get_cols = lambda: get_term_size().columns          # $COLUMNS else detect dynamically                                    # noqa
 
 
-def puts(x):
-    print(x)
+def tap(x, f):
+    f(x)
     return x
+
+
+def puts(x):
+    return tap(x, print)
 
 
 def dirs(x, _=False, __=False):
