@@ -6,7 +6,7 @@ import signal
 import subprocess
 import sys
 import types
-from typing import Callable, Iterable, List, Union
+from typing import Callable, Iterable, List, Optional, Tuple, Union
 
 import humanize
 import numpy as np
@@ -365,6 +365,39 @@ def _find_df_in_args(*args, **kwargs):
             return x
     else:
         raise ValueError('No df found in args')
+
+
+def df_style_cell(*styles: Union[
+    Tuple[Callable[['cell'], bool], 'style'],
+    Tuple['cell', 'style'],
+    Callable[['cell'], Optional['style']],
+]) -> Callable[['cell'], 'style']:
+    """
+    Shorthand for df.style.applymap(...). Example usage:
+        df.style.applymap(df_style_cell(
+            (lambda x: 0 < x < 1, 'color: red'),
+            (0, 'color: green'),
+            lambda x: 'background: %s' % to_rgb_hex(x),
+        ))
+    """
+    def f(x):
+        y = None
+        for style in styles:
+            if isinstance(style, tuple) and isinstance(style[0], types.FunctionType) and style[0](x):
+                y = style[1]
+            elif isinstance(style, tuple) and x == style[0]:
+                y = style[1]
+            elif isinstance(style, types.FunctionType):
+                y = style(x)
+            if y:
+                break
+        return y or ''
+    return f
+
+
+#
+# sql/bq
+#
 
 
 # TODO What's the right way to manage sessions and txns?
