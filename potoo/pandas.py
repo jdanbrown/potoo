@@ -52,7 +52,7 @@ def set_display_precision(x=display_precision):
     return display_precision
 
 
-def set_display():
+def set_display(**kwargs):
     "Make everything nice"
 
     # XXX I couldn't find a way to make auto-detect work with both ipython (terminal) + ipykernel (atom)
@@ -79,6 +79,12 @@ def set_display():
         columns = size.columns
         _display_width = display_width or columns
         _display_max_rows = display_max_rows or lines
+
+    # Let kwargs override any of these params that we just inferred
+    lines = kwargs.get('lines', lines)
+    columns = kwargs.get('columns', columns)
+    _display_width = kwargs.get('_display_width', _display_width)
+    _display_max_rows = kwargs.get('_display_max_rows', _display_max_rows)
 
     # For ipython pretty printing (not dfs)
     os.environ['LINES'] = str(lines)
