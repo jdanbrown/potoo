@@ -3,10 +3,12 @@ from copy import deepcopy
 from functools import reduce
 import tempfile
 
+import humanize
 import IPython.display
 from IPython.core.getipython import get_ipython
 import matplotlib as mpl
 import matplotlib.pyplot as plt
+from mizani.transforms import trans
 import numpy as np
 import pandas as pd
 import PIL
@@ -256,6 +258,20 @@ def graph(f, x: np.array) -> pd.DataFrame:
         'x': x,
         'y': f(x),
     })
+
+
+def labels_bytes(**kwargs):
+    kwargs.setdefault('gnu', True)
+    kwargs.setdefault('format', '%.3g')
+    return lambda xs: [humanize.naturalsize(x, **kwargs) for x in xs]
+
+
+def breaks_bytes(pow: int):
+    # TODO Default pow to log(max(lims), base=1024)
+    return lambda lims: trans().breaks_(limits=(
+        min(lims) // 1024**pow,
+        max(lims) // 1024**pow + 1,
+    )) * 1024**pow
 
 
 #
