@@ -49,7 +49,6 @@ def np_sample(
 
 
 # TODO Write tests
-#   - Regression test: allow_fewer with class A <n and class B >n shouldn't clip class B to size of class A (oops)
 def np_sample_stratified(
     X: np.ndarray,
     y: np.ndarray,
@@ -57,12 +56,12 @@ def np_sample_stratified(
     frac: float = None,  # Like df.sample, unlike np.random.choice
     replace: bool = False,  # Like df.sample, unlike np.random.choice
     random_state: Union[int, np.random.RandomState] = None,  # Like df.sample (requires more work with np.random)
-    allow_fewer: bool = False,  # If n and !replace, take min(n, len(class)) instances instead of exactly n
 ) -> (np.ndarray, np.ndarray):
     """
     Like np_sample, except:
     - Ensure approximate class balance
     - Ensure all classes have ≥1 sample (this is important to avoid various incidental complexity in e.g. sklearn utils)
+    - Interpret n approximately as frac = n / len(X)
     """
 
     # Args
@@ -73,6 +72,12 @@ def np_sample_stratified(
     if not isinstance(random_state, np.random.RandomState):
         random_state = np.random.RandomState(random_state)
 
+    # To sample a total number n, sample frac = n / len(X)
+    if n is not None:
+        frac = n / len(X)
+    if not (0 < frac <= 1):
+        raise ValueError(f'Expected 0 < frac[{frac}] <= 1 (where n[{n}])')
+
     ixs = {}
     # For each class (y_)
     for y_ in y:
@@ -81,7 +86,7 @@ def np_sample_stratified(
         # Sample them
         ixs[y_] = np_sample(
             y_ix,
-            n=min(n, len(y_ix)) if allow_fewer and n is not None and not replace else n,
+            n=None,
             frac=frac,
             replace=replace,
             random_state=random_state,
@@ -97,4 +102,5 @@ def np_sample_stratified(
             )
     # Merge and permute the classes indexes
     ix = random_state.permutation([i for ix in ixs.values() for i in ix])
+
     return (X[ix], y[ix])
