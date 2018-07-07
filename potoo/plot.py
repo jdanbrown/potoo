@@ -262,7 +262,8 @@ def graph(f, x: np.array) -> pd.DataFrame:
 
 def labels_bytes(**kwargs):
     kwargs.setdefault('gnu', True)
-    kwargs.setdefault('format', '%.3g')
+    # kwargs.setdefault('format', '%.3g')  # Bad, e.g. '1e+03M'
+    kwargs.setdefault('format', '%.4g')  # Better, e.g. '1000M'
     return lambda xs: [humanize.naturalsize(x, **kwargs) for x in xs]
 
 
