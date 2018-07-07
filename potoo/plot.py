@@ -267,12 +267,13 @@ def labels_bytes(**kwargs):
     return lambda xs: [humanize.naturalsize(x, **kwargs) for x in xs]
 
 
-def breaks_bytes(pow: int):
-    # TODO Default pow to log(max(lims), base=1024)
+def breaks_bytes(pow: int = None):
+    infer_pow = lambda lims: int(np.log(lims[1] - lims[0]) / np.log(1024) - .5)
+    _pow = lambda lims: pow if pow is not None else infer_pow(lims)
     return lambda lims: trans().breaks_(limits=(
-        min(lims) // 1024**pow,
-        max(lims) // 1024**pow + 1,
-    )) * 1024**pow
+        min(lims) // 1024**_pow(lims),
+        max(lims) // 1024**_pow(lims) + 1,
+    )) * 1024**_pow(lims)
 
 
 #
