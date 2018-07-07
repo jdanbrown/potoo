@@ -148,13 +148,14 @@ def timed_format(f, **kwargs):
     return elapsed, x
 
 
-def timed(f, *args, finally_=lambda elapsed_s: None, **kwargs):
+def timed(f, *args, finally_=lambda elapsed_s, x: None, **kwargs):
     start_s = time.time()
+    x = None
     try:
         x = f(*args, **kwargs)
     finally:
         elapsed_s = time.time() - start_s
-        finally_(elapsed_s)
+        finally_(elapsed_s, x)
     return elapsed_s, x
 
 
