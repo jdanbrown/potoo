@@ -24,8 +24,8 @@ def tap(x, f):
     return x
 
 
-def puts(x):
-    return tap(x, print)
+def puts(x, f=lambda x: x):
+    return tap(x, f=lambda x: print(f(x)))
 
 
 def dirs(x, _=False, __=False):
