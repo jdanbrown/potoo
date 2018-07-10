@@ -2,6 +2,7 @@ from contextlib import contextmanager
 from copy import deepcopy
 from functools import reduce
 import tempfile
+from typing import Union
 
 import humanize
 import IPython.display
@@ -9,6 +10,7 @@ from IPython.core.getipython import get_ipython
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 from mizani.transforms import trans
+from more_itertools import flatten
 import numpy as np
 import pandas as pd
 import PIL
@@ -383,6 +385,16 @@ if load_ext_rpy2_ipython():
 #
 # mpl
 #
+
+
+def mpl_cmap_concat(*cmaps: Union[str, mpl.colors.ListedColormap]) -> mpl.colors.ListedColormap:
+    cmaps = [plt.cm.get_cmap(cmap) if isinstance(cmap, str) else cmap for cmap in cmaps]
+    return mpl.colors.ListedColormap(list(flatten(cmap.colors for cmap in cmaps)))
+
+
+def mpl_cmap_repeat(cmap: Union[str, mpl.colors.ListedColormap], n: int) -> mpl.colors.ListedColormap:
+    cmap = plt.cm.get_cmap(cmap) if isinstance(cmap, str) else cmap
+    return mpl.colors.ListedColormap(cmap.colors * n)
 
 
 def plot_to_img(file_prefix=None, file_suffix='.png', **kwargs):
