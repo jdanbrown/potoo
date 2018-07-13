@@ -54,7 +54,7 @@ def strip_startswith(s: str, startswith: str, check=False) -> str:
 
 def strip_endswith(s: str, endswith: str, check=False) -> str:
     if s.endswith(endswith):
-        return s[:len(endswith)]
+        return s[:-len(endswith)]
     else:
         if check:
             raise ValueError(f"s[{s!r}] doesn't end with endswith[{endswith!r}]")
