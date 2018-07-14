@@ -392,8 +392,8 @@ def mpl_cmap_concat(*cmaps: Union[str, mpl.colors.ListedColormap]) -> mpl.colors
     return mpl.colors.ListedColormap(list(flatten(cmap.colors for cmap in cmaps)))
 
 
-def mpl_cmap_repeat(cmap: Union[str, mpl.colors.ListedColormap], n: int) -> mpl.colors.ListedColormap:
-    cmap = plt.cm.get_cmap(cmap) if isinstance(cmap, str) else cmap
+def mpl_cmap_repeat(n: int, *cmaps: Union[str, mpl.colors.ListedColormap]) -> mpl.colors.ListedColormap:
+    cmap = mpl_cmap_concat(*cmaps)
     return mpl.colors.ListedColormap(cmap.colors * n)
 
 
