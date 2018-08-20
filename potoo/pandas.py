@@ -16,9 +16,13 @@ from pandas.api.types import CategoricalDtype
 import potoo.numpy
 from potoo.util import get_cols, get_rows, or_else
 
-# Convenient shorthands for interactive use, but not recommended for real code that needs to be readable and maintanable
+# Convenient shorthands for interactive use -- not recommended for durable code that needs to be read and maintained
 DF = pd.DataFrame
 S = pd.Series
+
+#
+# Global options
+#
 
 # Mutate these for manual control
 #   - https://pandas.pydata.org/pandas-docs/stable/options.html
@@ -124,7 +128,13 @@ def with_options(options):
             pd.set_option(k, v)
 
 
+#
+# Utils
+#
+
+
 # Based on https://github.com/pandas-dev/pandas/issues/8517#issuecomment-247785821
+#   - Not very performant, use sparingly...
 def df_flatmap(df: pd.DataFrame, f: Callable[['Row'], Union[pd.DataFrame, Iterable['Row']]]) -> pd.DataFrame:
     return pd.DataFrame(
         OrderedDict(row_out)
