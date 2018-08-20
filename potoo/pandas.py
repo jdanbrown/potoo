@@ -242,6 +242,46 @@ def _sizeof_df_cols(df: pd.DataFrame) -> 'Column[int]':
 #         return df.applymap(dask.sizeof.sizeof).sum()
 
 
+def df_value_counts(
+    df: pd.DataFrame,
+    exprs=None,          # Cols to surface, as expressions understood by df.eval(expr) (default: df.columns)
+    limit=10,            # Limit rows
+    exclude_max_n=1,     # Exclude cols where max n ≤ exclude_max_n
+    fillna='',           # Fill na cells (for seeing); pass None to leave na cols as NaN (for processing)
+    unique_names=False,  # Give all cols unique names (for processing) instead of reusing 'n' (for seeing)
+) -> pd.DataFrame:
+    """Series.value_counts() extended over a whole DataFrame (with a few compromises in hygiene)"""
+    exprs = exprs if exprs is not None else df.columns
+    return (df
+        .pipe(df_remove_unused_categories)
+        .pipe(df_cat_to_str)
+        .pipe(lambda df: (pd.concat(axis=1, objs=[
+            ns
+            for expr_opts in exprs
+            for expr, opts in [expr_opts if isinstance(expr_opts, tuple) else (expr_opts, dict())]
+            for ns in [(df
+                .eval(expr)
+                .value_counts()
+            )]
+            if ns.iloc[0] > exclude_max_n
+            for ns in [(ns
+                .pipe(lambda s: (
+                    # NOTE We "sort_index" when "sort_values=True" because the "values" are in the index, as opposed to
+                    # the "counts", which are the default sort
+                    s.sort_values(ascending=opts.get('ascending', False)) if not opts.get('sort_values') else
+                    s.sort_index(ascending=opts.get('ascending', True))
+                ))
+                .iloc[:limit]
+                .to_frame()
+                .rename(columns=lambda x: f'n_{expr}' if unique_names else 'n')
+                .reset_index()
+                .rename(columns={'index': expr})
+            )]
+        ])))
+        .fillna(fillna)
+    )
+
+
 def df_reorder_cols(df: pd.DataFrame, first: List[str] = [], last: List[str] = []) -> pd.DataFrame:
     first_last = set(first) | set(last)
     return df.reindex(columns=list(first) + [c for c in df.columns if c not in first_last] + list(last))
