@@ -183,6 +183,10 @@ class theme_figsize(theme):
             rc['savefig.dpi'] *= 2
         return rc
 
+    @property
+    def figsize(self):
+        return self.themeables['figure_size'].properties['value']
+
 
 # ~/.matploblib/matploblibrc isn't read by ipykernel, so we call this from ~/.pythonrc which is
 #   - TODO What's the right way to init mpl.rcParams?
