@@ -3,6 +3,8 @@ from typing import Union
 
 from potoo.util import get_cols
 
+# Convenient shorthands for interactive use -- not recommended for durable code that needs to be read and maintained
+A = np.array
 
 def _float_format(width, precision):
     return lambda x: ('%%%s.%sg' % (width, precision)) % x
