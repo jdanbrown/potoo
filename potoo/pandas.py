@@ -303,6 +303,10 @@ def df_transform_index(df: pd.DataFrame, f: Callable[[List[str]], List[str]]) ->
     return df
 
 
+def df_set_index_name(df: pd.DataFrame, name: str) -> pd.DataFrame:
+    return df_transform_index(df, lambda index: index.rename(name))
+
+
 def df_remove_unused_categories(df: pd.DataFrame) -> pd.DataFrame:
     """
     Do col.remove_unused_categories() for all categorical columns
