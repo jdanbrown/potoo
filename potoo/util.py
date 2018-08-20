@@ -19,8 +19,15 @@ get_rows = lambda: get_term_size().lines            # $LINES else detect dynamic
 get_cols = lambda: get_term_size().columns          # $COLUMNS else detect dynamically                                    # noqa
 
 
-def tap(x, f):
-    f(x)
+def tap(x, f, *fs):
+    """
+    Example usage:
+        tap(x, lambda x: ...)
+        tap(x, f, g, h)
+        tap(f=lambda x: ..., x=x)
+    """
+    for f in [f, *fs]:
+        f(x)
     return x
 
 
