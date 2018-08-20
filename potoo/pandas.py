@@ -224,17 +224,22 @@ def _series_quantile(s, *args, **kwargs):
 
 
 def _sizeof_df_cols(df: pd.DataFrame) -> 'Column[int]':
-    """
-    sizeof is hard, but make our best effort:
-    - Use dask.sizeof.sizeof instead of sys.getsizeof, since the latter is unreliable for pandas/numpy objects
-    - Use df.applymap, since dask.sizeof.sizeof appears to not do this right [why? seems wrong...]
-    """
-    try:
-        import dask.sizeof
-    except:
-        return df.apply(lambda c: None)
-    else:
-        return df.applymap(dask.sizeof.sizeof).sum()
+    return df.memory_usage(index=False, deep=True)
+
+
+# XXX Looks like df.memory_usage(deep=True) is more accurate (previous attempts were missing deep=True)
+# def _sizeof_df_cols(df: pd.DataFrame) -> 'Column[int]':
+#     """
+#     sizeof is hard, but make our best effort:
+#     - Use dask.sizeof.sizeof instead of sys.getsizeof, since the latter is unreliable for pandas/numpy objects
+#     - Use df.applymap, since dask.sizeof.sizeof appears to not do this right [why? seems wrong...]
+#     """
+#     try:
+#         import dask.sizeof
+#     except:
+#         return df.apply(lambda c: None)
+#     else:
+#         return df.applymap(dask.sizeof.sizeof).sum()
 
 
 def df_reorder_cols(df: pd.DataFrame, first: List[str] = [], last: List[str] = []) -> pd.DataFrame:
