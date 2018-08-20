@@ -6,8 +6,9 @@ from potoo.util import get_cols
 # Convenient shorthands for interactive use -- not recommended for durable code that needs to be read and maintained
 A = np.array
 
-def _float_format(width, precision):
-    return lambda x: ('%%%s.%sg' % (width, precision)) % x
+#
+# Global options
+#
 
 
 def set_display():
@@ -18,6 +19,15 @@ def set_display():
         threshold=10000        # Default 1000; max total elements before summarizing cols and rows
         # formatter={'float_kind': _float_format(10, 3)}, # Default: magic in numpy.core.arrayprint
     )
+
+
+def _float_format(width, precision):
+    return lambda x: ('%%%s.%sg' % (width, precision)) % x
+
+
+#
+# Utils
+#
 
 
 def np_sample(
