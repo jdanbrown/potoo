@@ -30,6 +30,14 @@ def ipy_format(*xs: any) -> str:
     )
 
 
+def ipy_print(*xs: any, **kwargs) -> str:
+    """
+    Print like IPython.display.display, but also allow control over print kwargs like flush, file, etc.
+    - Spec: ipy_print(*xs) ~ display(*xs)
+    """
+    print(ipy_format(*xs), **kwargs)
+
+
 def is_ipython_console():
     return or_else(None, lambda: get_ipython().__class__.__name__) == 'TerminalInteractiveShell'
 
