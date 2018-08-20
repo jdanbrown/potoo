@@ -186,6 +186,11 @@ def df_summary(
     """A more flexible version of df.describe, with more information by default"""
     if isinstance(df, pd.Series):
         df = pd.DataFrame(df)
+    try:
+        df = df.reset_index()  # Surface indexes as cols in stats
+    except:
+        # Oops, index is already a col [`drop=df.index.name in df.columns` is unreliable b/c df.index.names ...]
+        df = df.reset_index(drop=True)
     stats = [(f, lambda df, f=f: getattr(df, f)()) if isinstance(f, str) else f for f in stats]
     prototypes = [(f, lambda df, f=f: getattr(df, f)()) if isinstance(f, str) else f for f in prototypes]
     return (
