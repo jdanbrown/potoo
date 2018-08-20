@@ -133,6 +133,14 @@ def with_options(options):
 #
 
 
+def series_assign(s: pd.Series, **kwargs) -> pd.Series:
+    """Like DataFrame.assign but for Series"""
+    s = s.copy()
+    for k, v in kwargs.items():
+        s.at[k] = v
+    return s
+
+
 # Based on https://github.com/pandas-dev/pandas/issues/8517#issuecomment-247785821
 #   - Not very performant, use sparingly...
 def df_flatmap(df: pd.DataFrame, f: Callable[['Row'], Union[pd.DataFrame, Iterable['Row']]]) -> pd.DataFrame:
