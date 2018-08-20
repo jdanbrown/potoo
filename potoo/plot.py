@@ -20,7 +20,7 @@ from plotnine.data import *  # For export
 from plotnine.stats.binning import freedman_diaconis_bins
 
 import potoo.mpl_backend_xee  # Used by ~/.matplotlib/matplotlibrc
-from potoo.util import or_else, puts, singleton
+from potoo.util import or_else, puts, singleton, tap
 
 
 ipy = get_ipython()  # None if not in ipython
