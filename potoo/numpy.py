@@ -1,3 +1,5 @@
+from collections import OrderedDict
+
 import numpy as np
 from typing import Union
 
@@ -28,6 +30,22 @@ def _float_format(width, precision):
 #
 # Utils
 #
+
+
+def np_summary(x: np.ndarray) -> 'pd.DataFrame':
+    import pandas as pd  # Lazy import so this module can be used without pandas
+    return pd.DataFrame([OrderedDict(
+        dtype=x.dtype,
+        sizeof=x.nbytes,
+        shape=x.shape,
+        notnull=pd.notnull(x).sum(),
+        nunique=len(np.unique(x)),
+        mean=x.mean(),
+        std=x.std(),
+        min=x.min(),
+        max=x.max(),
+        x=x,
+    )])
 
 
 def np_sample(
