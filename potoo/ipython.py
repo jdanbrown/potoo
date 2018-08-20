@@ -17,12 +17,17 @@ from potoo.pandas import cat_to_str
 from potoo.util import or_else, deep_round_sig, singleton
 
 
-def ipy_format(x: any) -> str:
+def ipy_format(*xs: any) -> str:
     """
     Format like IPython.display.display
+    - Spec: print(ipy_format(*xs)) ~ display(*xs)
+    - Manually line-join multiple args like display(x, y) does
     """
-    formats, metadata = get_ipython().display_formatter.format(x)
-    return formats['text/plain']
+    return '\n'.join(
+        formats['text/plain']
+        for x in xs
+        for formats, metadata in [get_ipython().display_formatter.format(x)]
+    )
 
 
 def is_ipython_console():
