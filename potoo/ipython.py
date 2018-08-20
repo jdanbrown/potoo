@@ -132,6 +132,13 @@ class ipy_formats:
             #       - I briefly tried and nothing happened, so I went with 'text/html' instead; do more research...
             ipy.display_formatter.formatters['text/html'].for_type(pd.Series, self._format_html_series)
 
+            # Prevent plotnine plots from displaying their repr str (e.g. '<ggplot: (-9223372036537068975)>') after repr
+            # has already side-effected the plotting of an image
+            #   - Returning '' causes the formatter to be ignored
+            #   - Returning ' ' is a HACK but empirically causes no text output to show up (in atom hydrogen-extras)
+            #   - To undo: ipy.display_formatter.formatters['text/html'].pop('plotnine.ggplot.ggplot')
+            ipy.display_formatter.formatters['text/html'].for_type_by_name('plotnine.ggplot', 'ggplot', lambda g: ' ')
+
     def _format_html_df(self, df: pd.DataFrame) -> str:
         return df.apply(axis=0, func=lambda col:
             # cat_to_str to avoid .apply mapping all cat values, which we don't need and could be slow for large cats
