@@ -147,10 +147,12 @@ def get_figsize():
 class theme_figsize(theme):
     """
     plotnine theme with defaults for figure_size width + aspect_ratio (which overrides figure_size height if defined):
+    - aspect is allowed as an alias for aspect_ratio
     - https://plotnine.readthedocs.io/en/stable/generated/plotnine.themes.theme.html#aspect_ratio-and-figure_size
     """
 
-    def __init__(self, name='inline', width=None, height=None, aspect_ratio=None, dpi=72):
+    def __init__(self, name='inline', width=None, height=None, aspect_ratio=None, aspect=None, dpi=72):
+        aspect_ratio = aspect_ratio or aspect  # Alias
         if name:
             size = get_figsize_named(name)['mpl']
             width = width or size.get('width')
