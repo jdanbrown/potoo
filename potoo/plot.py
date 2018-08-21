@@ -403,6 +403,18 @@ def mpl_cmap_repeat(n: int, *cmaps: Union[str, mpl.colors.ListedColormap]) -> mp
     return mpl.colors.ListedColormap(cmap.colors * n)
 
 
+def mpl_cmap_with_colors(cmap: mpl.colors.ListedColormap, f: Callable[[list], list]) -> mpl.colors.ListedColormap:
+    cmap = plt.cm.get_cmap(cmap) if isinstance(cmap, str) else cmap
+    orig_n_colors = len(cmap.colors)
+    cmap = mpl_cmap_with_colors_noresample(cmap, f)
+    return cmap._resample(orig_n_colors)  # e.g. keep at 256 colors else plotnine won't interpolate [mizani.palettes.cmap_d_pal]
+
+
+def mpl_cmap_with_colors_noresample(cmap: mpl.colors.ListedColormap, f: Callable[[list], list]) -> mpl.colors.ListedColormap:
+    cmap = plt.cm.get_cmap(cmap) if isinstance(cmap, str) else cmap
+    return mpl.colors.ListedColormap(list(f(cmap.colors)))
+
+
 def plot_to_img(file_prefix=None, file_suffix='.png', **kwargs):
     """
     Make an IPython.display.Image from the current plot
