@@ -2,7 +2,7 @@ from contextlib import contextmanager
 from copy import deepcopy
 from functools import reduce
 import tempfile
-from typing import Union
+from typing import Callable, Union
 
 import humanize
 import IPython.display
