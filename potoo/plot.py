@@ -217,6 +217,12 @@ def plot_set_jupyter_defaults():
 #
 
 
+def gg_to_img(g: ggplot, **kwargs) -> PIL.Image.Image:
+    """Render a ggplot as an image"""
+    g.draw()
+    return plt_to_img(**kwargs)
+
+
 def ggbar(*args, **kwargs):
     kwargs.setdefault('geom', geom_bar)
     return gg(*args, **kwargs)
@@ -415,14 +421,30 @@ def mpl_cmap_with_colors_noresample(cmap: mpl.colors.ListedColormap, f: Callable
     return mpl.colors.ListedColormap(list(f(cmap.colors)))
 
 
-def plot_to_img(file_prefix=None, file_suffix='.png', **kwargs):
+def plt_to_img(dummy: any = None, **kwargs) -> PIL.Image.Image:
     """
-    Make an IPython.display.Image from the current plot
+    Render the current figure as a (PIL) image
+    - Take dummy arg to support expression usage `plt_to_img(...)` as well as statement usage `...; plt_to_img()`
     """
+    return PIL.Image.open(plot_to_file(**kwargs))
+
+
+def plt_to_ipy_img(dummy: any = None, **kwargs) -> IPython.display.Image:
+    """Like plt_to_img but make an IPython Image instead of a PIL Image"""
+    return IPython.display.Image(filename=plot_to_file(**kwargs))
+
+
+def plot_to_file(file_prefix=None, file_suffix=None, **kwargs) -> str:
+    """
+    Save the current plot to a file and return its path
+    - Useful as a first step for converting to an image, since I don't see a way to plot straight to an in-memory image
+    """
+    file_prefix = file_prefix or 'plot'
+    file_suffix = file_suffix or '.png'
     path = tempfile.mktemp(prefix='%s-' % file_prefix, suffix=file_suffix)
     plt.savefig(path, **kwargs)
     plt.close()  # Else plt.show() happens automatically [sometimes: with plt.* but not with plotnine...]
-    return IPython.display.Image(filename=path)
+    return path
 
 
 def plot_img(X: np.ndarray, **kwargs):
