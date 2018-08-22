@@ -141,6 +141,14 @@ def series_assign(s: pd.Series, **kwargs) -> pd.Series:
     return s
 
 
+def df_assign_first(df, **kwargs) -> pd.DataFrame:
+    """Like df.assign but also reposition the assigned cols to be first"""
+    return (df
+        .assign(**kwargs)
+        .pipe(df_reorder_cols, first=kwargs.keys())
+    )
+
+
 # Based on https://github.com/pandas-dev/pandas/issues/8517#issuecomment-247785821
 #   - Not very performant, use sparingly...
 def df_flatmap(df: pd.DataFrame, f: Callable[['Row'], Union[pd.DataFrame, Iterable['Row']]]) -> pd.DataFrame:
