@@ -2,7 +2,7 @@ from contextlib import contextmanager
 from copy import deepcopy
 from functools import reduce
 import tempfile
-from typing import Callable, Union
+from typing import Callable, Optional, Union
 
 import humanize
 import IPython.display
@@ -438,8 +438,9 @@ def show_img(
     file_prefix=None,
     file_suffix='.png',
     scale=None,
+    show=True,
     **kwargs,
-):
+) -> Optional[PIL.Image.Image]:
     """
     Plot a 2D array X as an image and then ipy display(Image(...)) the result
 
@@ -462,7 +463,11 @@ def show_img(
         if isinstance(scale, (int, float)):
             scale = (scale, scale)
         image = image.resize(np.array(image.size) * scale)
-    display(image)
+
+    if show:
+        display(image)
+    else:
+        return image
 
 
 # XXX Defunct
