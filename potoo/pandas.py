@@ -257,6 +257,7 @@ def df_value_counts(
     exclude_max_n=1,     # Exclude cols where max n ≤ exclude_max_n
     fillna='',           # Fill na cells (for seeing); pass None to leave na cols as NaN (for processing)
     unique_names=False,  # Give all cols unique names (for processing) instead of reusing 'n' (for seeing)
+    **kwargs,            # kwargs for .value_counts (e.g. dropna)
 ) -> pd.DataFrame:
     """Series.value_counts() extended over a whole DataFrame (with a few compromises in hygiene)"""
     exprs = exprs if exprs is not None else df.columns
@@ -269,7 +270,7 @@ def df_value_counts(
             for expr, opts in [expr_opts if isinstance(expr_opts, tuple) else (expr_opts, dict())]
             for ns in [(df
                 .eval(expr)
-                .value_counts()
+                .value_counts(**kwargs)
             )]
             if ns.iloc[0] > exclude_max_n
             for ns in [(ns
