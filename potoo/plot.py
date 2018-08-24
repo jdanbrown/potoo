@@ -483,8 +483,21 @@ def show_img(
     image = PIL.Image.open(path)
     if scale:
         if isinstance(scale, (int, float)):
-            scale = (scale, scale)
-        image = image.resize(np.array(image.size) * scale)
+            scale = dict(wx=scale, hx=scale)
+        elif isinstance(scale, (tuple, list)):
+            (wx, hx) = scale
+            scale = dict(wx=wx, hx=hx)
+        scale.setdefault('wx', 1)
+        scale.setdefault('hx', 1)
+        if 'w' not in scale and 'h' not in scale:
+            scale['w'] = int(scale['wx'] * image.size[0])
+            scale['h'] = int(scale['hx'] * image.size[1])
+        elif 'w' not in scale:
+            scale['w'] = int(scale['h'] / image.size[1] * image.size[0])
+        elif 'h' not in scale:
+            scale['h'] = int(scale['w'] / image.size[0] * image.size[1])
+        scale.setdefault('resample', PIL.Image.HAMMING)
+        image = image.resize((scale['w'], scale['h']), resample=scale['resample'])
 
     if show:
         display(image)
