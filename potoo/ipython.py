@@ -1,20 +1,26 @@
+import abc
+import base64
+import contextlib
+from functools import partial
 import gc
 import os
 import random
 import signal
 import time
+from typing import Iterable, Tuple
 
 from attrdict import AttrDict
 from dataclasses import dataclass
 from IPython.core.getipython import get_ipython
 from IPython.display import *
+from more_itertools import first
 import numpy as np
 import pandas as pd
 import prompt_toolkit
 
 import potoo.pandas
 from potoo.pandas import cat_to_str
-from potoo.util import or_else, deep_round_sig, singleton
+from potoo.util import AttrContext, or_else, deep_round_sig, singleton
 
 
 def ipy_format(*xs: any) -> str:
@@ -97,12 +103,15 @@ def gc_on_ipy_post_run_cell():
 
 @singleton
 @dataclass
-class ipy_formats:
+class ipy_formats(AttrContext):
+    # A pile of hacks to make values display prettier in ipython/jupyter
+    #   - TODO Un-hack these into something that doesn't assume a ~/.pythonrc hook so that ipynb output is reproducible
 
-    config = AttrDict(
-        deep_round_sig=True,  # Very useful by default [and hopefully doesn't break anything...]
-        stack_iters=False,  # Useful, but maybe not by default
-    )
+    deep_round_sig: bool = True  # Very useful by default [and hopefully doesn't break anything...]
+    stack_iters: bool = False  # Useful, but maybe not by default
+
+    # Internal state (only used as a stack-structured dynamic var)
+    _fancy_cells: bool = False
 
     @property
     def precision(self):
@@ -110,82 +119,150 @@ class ipy_formats:
 
     # TODO Respect display.max_rows (currently treats it as unlimited)
     def set(self):
-        ipy = get_ipython()
-        if ipy:
+        self.ipy = get_ipython()
+        if self.ipy:
 
-            ipy.display_formatter.formatters['text/html'].for_type(pd.DataFrame, self._format_html_df)
+            # TODO These 'text/plain' formatters:
+            #   1. Do nothing, and I don't know why -- maybe interference from potoo.pretty?
+            #   2. Are untested, because (1)
 
-            # TODO 'text/plain' for pd.DataFrame
-            #   - TODO Have to self.foo(...) instead of returning... [what did I mean by this a long time ago?]
-            # ipy.display_formatter.formatters['text/plain'].for_type(pd.DataFrame, lambda df, self, cycle:
-            #     df.apply(axis=0, func=lambda col:
-            #         col.apply(lambda x:
-            #             x if not isinstance(x, list)
-            #             else '' if len(x) == 0
-            #             else pd.Series(x).to_string(index=False)
-            #         )
-            #     ).to_string()
-            # )
+            # pd.DataFrame
+            self.ipy.display_formatter.formatters['text/html'].for_type(pd.DataFrame, lambda df: (
+                self._format_df(df, mimetype='text/html')
+            ))
+            self.ipy.display_formatter.formatters['text/plain'].for_type(pd.DataFrame, lambda df, p, cycle: (
+                p.text(self._format_df(df, mimetype='text/plain'))
+            ))
 
-            # pd.Series doesn't have _repr_html_ or .to_html, like pd.DataFrame does
-            #   - TODO 'text/plain' for pd.Series
-            #       - I briefly tried and nothing happened, so I went with 'text/html' instead; do more research...
-            ipy.display_formatter.formatters['text/html'].for_type(pd.Series, self._format_html_series)
+            # pd.Series
+            self.ipy.display_formatter.formatters['text/html'].for_type(pd.Series, lambda s: (
+                self._format_series(s, mimetype='text/html')
+            ))
+            self.ipy.display_formatter.formatters['text/plain'].for_type(pd.Series, lambda s, p, cycle: (
+                p.text(self._format_series(s, mimetype='text/plain'))
+            ))
 
             # Prevent plotnine plots from displaying their repr str (e.g. '<ggplot: (-9223372036537068975)>') after repr
             # has already side-effected the plotting of an image
             #   - Returning '' causes the formatter to be ignored
             #   - Returning ' ' is a HACK but empirically causes no text output to show up (in atom hydrogen-extras)
-            #   - To undo: ipy.display_formatter.formatters['text/html'].pop('plotnine.ggplot.ggplot')
-            ipy.display_formatter.formatters['text/html'].for_type_by_name('plotnine.ggplot', 'ggplot', lambda g: ' ')
-
-    def _format_html_df(self, df: pd.DataFrame) -> str:
-        return df.apply(axis=0, func=lambda col:
-            # cat_to_str to avoid .apply mapping all cat values, which we don't need and could be slow for large cats
-            col.pipe(cat_to_str).apply(self._format_html_df_cell)
-        ).to_html(
-            escape=False,  # Allow html in cells
-        )
-
-    def _format_html_series(self, s: pd.Series) -> str:
-        # Use <div> instad of <pre>, since <pre> might bring along a lot of style baggage
-        return '<div style="white-space: pre">%s</div>' % (
-            # cat_to_str to avoid .apply mapping all cat values, which we don't need and could be slow for large cats
-            s.pipe(cat_to_str).apply(self._format_any),
-        )
-
-    def _format_html_df_cell(self, x: any) -> any:
-
-        if self.config.stack_iters and isinstance(x, (list, tuple, np.ndarray)):
-            # When displaying df's as html, display list/etc. cells as vertically stacked values (inspired by bq web UI)
-            # - http://ipython.readthedocs.io/en/stable/api/generated/IPython.core.formatters.html
-            ret = '' if len(x) == 0 else (
-                pd.Series(self._format_any(y) for y in x)
-                .to_string(index=False)
-                .replace('\n', '<br/>')
+            #   - To undo: self.ipy.display_formatter.formatters['text/html'].pop('plotnine.ggplot.ggplot')
+            self.ipy.display_formatter.formatters['text/html'].for_type_by_name(
+                'plotnine.ggplot', 'ggplot',
+                lambda g: ' ',
             )
-        else:
-            ret = self._format_any(x)
 
-        # HACK A weird thing to help out atom/jupyter styling
+    def _format_df(self, df: pd.DataFrame, mimetype: str) -> str:
+        with contextlib.ExitStack() as stack:
+            # Implicitly trigger _fancy_cells by putting >0 df_cell values in your df (typical usage is whole cols)
+            stack.enter_context(self.context(_fancy_cells=df.applymap(lambda x: isinstance(x, df_cell)).any().any()))
+            # Format df of cells to a df of formatted strs
+            df = df.apply(axis=0, func=lambda col: (col
+                # cat_to_str to avoid .apply mapping all cat values, which we don't need and could be slow for large cats
+                .pipe(cat_to_str)
+                .apply(self._format_df_cell, mimetype=mimetype)
+            ))
+            # Format df of formatted strs to one formatted str
+            if self._fancy_cells:
+                # Disable max_colwidth else pandas will truncate and break our strs (e.g. <img> with long data url)
+                #   - Isolate this to just df.to_* so that self._format_pd_any (above) sees the real max_colwidth, so
+                #     that it correctly renders truncated strs for text/plain cells (via a manual ipy_format)
+                #   - TODO Can we clean this up now that we have df_cell_str...?
+                stack.enter_context(pd.option_context('display.max_colwidth', -1))
+            if mimetype == 'text/html':
+                return df.to_html(escape=False)  # escape=False to allow html in cells
+            else:
+                return df.to_string()
+
+    def _format_series(self, s: pd.Series, mimetype: str) -> str:
+        # cat_to_str to avoid .apply mapping all cat values, which we don't need and could be slow for large cats
+        text = s.pipe(cat_to_str).apply(self._format_pd_any, mimetype=mimetype).to_string()
+        if mimetype == 'text/html':
+            # df_cell as <pre> instead of fancy html since Series doesn't properly support .to_html like DataFrames do
+            #   - https://github.com/pandas-dev/pandas/issues/8829
+            #   - Use <div style=...> instad of <pre>, since <pre> brings along a lot of style baggage we don't want
+            return '<div style="white-space: pre">%s</div>' % text
+        else:
+            return text
+
+    def _format_df_cell(self, x: any, mimetype: str) -> any:
+
+        # We exclude dicts/mappings here since silently showing only dict keys (because iter(dict)) would be confusing
+        #   - In most cases it's preferred to apply df_cell_stack locally instead of setting stack_iters=True globally,
+        #     but it's important to keep the global option in cases like %%sql magic, where the result df displays as is
+        if self.stack_iters and isinstance(x, (list, tuple, np.ndarray)):
+            x = df_cell_stack(x)
+
+        ret = self._format_pd_any(x, mimetype=mimetype)
+
+        # HACK An ad-hoc, weird thing to help out atom/jupyter styling
         #   - TODO Should this be: _has_number(ret)? _has_number(x)? _has_number(col) from one frame above?
-        if not self._has_number(ret):
+        if mimetype == 'text/html' and not self._has_number(ret):
             ret = '<div class="not-number">%s</div>' % (ret,)
 
         return ret
 
-    def _format_any(self, x: any) -> any:
-        if all([
-            self.config.deep_round_sig,
-            # Don't touch np.array's since they can be really huge, and numpy is already smart about truncating them
-            not isinstance(x, np.ndarray),
-        ]):
-            return deep_round_sig(x, self.precision)
+    def _format_pd_any(self, x: any, mimetype: str) -> any:
+        # HACK HACK HACK Way too much stuff going on in here that's none of our business...
+
+        # If not _fancy_cells, defer formatting to pandas (to respect e.g. 'display.max_colwidth')
+        #   - Principle of least surprise: if I put no df_cell's in my df, everything should be normal
+        if not self._fancy_cells:
+            # Apply self.precision to numbers, like numpy but everywhere
+            #   - But only if deep_round_sig
+            #   - And don't touch np.array's since they can be really huge, and numpy already truncates them for us
+            #   - TODO How to achieve self.precision less brutishly?
+            if self.deep_round_sig and not isinstance(x, np.ndarray):
+                return deep_round_sig(x, self.precision)
+            else:
+                return x
+
+        # If _fancy_cells but not a df_cell value, manually emulate pandas formatting
+        #   - This is necessary only because we have to disable 'display.max_colwidth' above to accommodate long
+        #     formatted strs (e.g. <img>) from df_cell values (next condition)
+        #   - This emulation will violate the principle of least surprise if do something wrong, which is why take care
+        #     to avoid it if the user put no df_cell's in their df (via _fancy_cells)
+        #   - TODO What are we missing by not reusing pd.io.formats.format.format_array?
+        elif not isinstance(x, df_cell):
+            # Do the unfancy conversion (e.g. for self.precision)
+            with self.context(_fancy_cells=False):
+                x = self._format_pd_any(x, mimetype=mimetype)
+            # Truncate str(x) to 'display.max_colwidth' _only if necessary_, else leave x as is so pandas can format it
+            #   - e.g. datetime.date: pandas '2000-01-01' vs. str() 'datetime.date(2000, 1, 1)'
+            return truncate_like_pd_max_colwidth(x)
+
+        # If _fancy_cells and a df_cell value, format to str using ipython formatters, to emulate ipython display()
+        #   - TODO Clean up / modularize dispatch on format
+        #   - TODO Handle more formats (svg, ...)
         else:
-            return x
+            ret = None
+            formats = x._repr_mimebundle_()
+            if mimetype == 'text/html':
+                html = formats.get('text/html')
+                img_types = [k for k in formats.keys() if k.startswith('image/')]
+                if html:
+                    ret = html.strip()
+                elif img_types:
+                    img_type = first(img_types)
+                    img = formats[img_type]
+                    if isinstance(img, str):
+                        img_b64 = img.strip()
+                    elif isinstance(img, bytes):
+                        img_b64 = base64.b64encode(img).decode()
+                    ret = f'<img src="data:{img_type};base64,{img_b64}"></img>'
+            if ret is None:
+                ret = formats['text/plain']
+            return ret
+
+    def _has_number(self, x: any) -> bool:
+        return (
+            np.issubdtype(type(x), np.number) or
+            isinstance(x, list) and any(self._has_number(y) for y in x)
+        )
 
     # XXX Subsumed by deep_round_sig
-    # def _format_any(self, x: any) -> any:
+    #
+    # def _format_pd_any(self, x: any) -> any:
     #     if np.issubdtype(type(x), np.complexfloating):
     #         return self._round_to_precision_complex(x)
     #     else:
@@ -201,8 +278,85 @@ class ipy_formats:
     #     # Use z.__format___ instead of '%.3g' % ..., since the latter doesn't support complex numbers (dunno why).
     #     return complex(z.__format__('.%sg' % self.precision))
 
-    def _has_number(self, x: any) -> bool:
-        return (
-            np.issubdtype(type(x), np.number) or
-            isinstance(x, list) and any(self._has_number(y) for y in x)
-        )
+
+@dataclass
+class df_cell:
+    """
+    Mark a df cell to be displayed in some special way determined by the subtype
+    - Motivating use case is ipy_formats._format_df
+    """
+
+    value: any
+
+    @abc.abstractmethod
+    def _repr_mimebundle_(self, include=None, exclude=None):
+        ...
+
+    @classmethod
+    def many(cls, xs: Iterable[any]) -> Iterable['cls']:
+        return [cls(x) for x in xs]
+
+
+class df_cell_display(df_cell):
+    """
+    Mark a df cell to be displayed like ipython display()
+    """
+
+    def _repr_mimebundle_(self, include=None, exclude=None):
+        # Ref: https://ipython.readthedocs.io/en/stable/config/integrating.html
+        formats, _metadata = get_ipython().display_formatter.format(self.value)
+        return formats
+
+
+class df_cell_str(df_cell):
+    """
+    Mark a df cell to be displayed like str(value)
+    - Useful e.g. for bypassing pandas 'display.max_colwidth' or ipython str wrapping
+    """
+
+    def _repr_mimebundle_(self, include=None, exclude=None):
+        return {
+            'text/plain': str(self.value),
+            'text/html': str(self.value),
+        }
+
+
+class df_cell_stack(df_cell):
+    """
+    Mark a df cell to be displayed as vertically stacked values (inspired by the bigquery web UI)
+    - Assumes the cell value is iterable
+    """
+
+    def __post_init__(self):
+        super().__post_init__()
+        if not hasattr(self.value, '__len__'):
+            raise ValueError("df_cell_stack requires a materialized Iterable (and not a one-time Iterator)")
+
+    def _repr_mimebundle_(self, include=None, exclude=None):
+        return {
+            'text/plain': '' if len(self.value) == 0 else (
+                pd.Series(ipy_formats._format_pd_any(x, mimetype='text/plain') for x in self.value)
+                .to_string(index=False)
+            ),
+            'text/html': '' if len(self.value) == 0 else (
+                pd.Series(ipy_formats._format_pd_any(x, mimetype='text/html') for x in self.value)
+                .to_string(index=False)
+                .replace('\n', '<br/>')
+            ),
+        }
+
+
+def truncate_like_pd_max_colwidth(x: any) -> str:
+    """
+    Emulate the behavior of pandas 'display.max_colwidth'
+    - TODO Ugh, how can we avoid doing this ourselves?
+    """
+    max_colwidth = pd.get_option("display.max_colwidth")
+    if max_colwidth is None:
+        return x
+    else:
+        s = str(x)
+        if len(s) <= max_colwidth:
+            return s
+        else:
+            return s[:max_colwidth - 3] + '...'
