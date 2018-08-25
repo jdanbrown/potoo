@@ -405,8 +405,10 @@ def mpl_cmap_concat(*cmaps: Union[str, mpl.colors.ListedColormap]) -> mpl.colors
 
 
 def mpl_cmap_repeat(n: int, *cmaps: Union[str, mpl.colors.ListedColormap]) -> mpl.colors.ListedColormap:
+    """Repeat mpl_cmap_concat(*cmaps) to have n colors"""
     cmap = mpl_cmap_concat(*cmaps)
-    return mpl.colors.ListedColormap(cmap.colors * n)
+    colors = (cmap.colors * (1 + n // len(cmap.colors)))[:n]
+    return mpl.colors.ListedColormap(colors)
 
 
 def mpl_cmap_with_colors(cmap: mpl.colors.ListedColormap, f: Callable[[list], list]) -> mpl.colors.ListedColormap:
