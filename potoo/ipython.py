@@ -327,12 +327,8 @@ class df_cell_stack(df_cell):
     - Assumes the cell value is iterable
     """
 
-    def __post_init__(self):
-        super().__post_init__()
-        if not hasattr(self.value, '__len__'):
-            raise ValueError("df_cell_stack requires a materialized Iterable (and not a one-time Iterator)")
-
     def _repr_mimebundle_(self, include=None, exclude=None):
+        self.value = list(self.value)  # Materialize iters
         return {
             'text/plain': '' if len(self.value) == 0 else (
                 pd.Series(ipy_formats._format_pd_any(x, mimetype='text/plain') for x in self.value)
