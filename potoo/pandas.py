@@ -9,6 +9,7 @@ import types
 from typing import Callable, Iterable, Iterator, List, Optional, Tuple, Union
 
 import humanize
+from more_itertools import one, windowed
 import numpy as np
 import pandas as pd
 from pandas.api.types import CategoricalDtype
@@ -495,6 +496,74 @@ def df_style_cell(*styles: Union[
                 break
         return y or ''
     return f
+
+
+#
+# io
+#
+
+def pd_read_fwf(
+    filepath_or_buffer,
+    widths: Optional[Union[List[int], 'infer']] = None,
+    unused_char='\a',  # For widths='infer': any char not present in the file, used to initially parse raw lines
+    **kwargs,
+) -> pd.DataFrame:
+    """
+    Like pd.read_fwf, except:
+    - Add support for widths='infer', which infers col widths from the header row (assuming no spaces in header names)
+    """
+
+    if widths == 'infer':
+        # Read raw lines
+        #   - Use pd.read_* (with kwargs) so we get all the file/str/compression/encoding goodies
+        [header_line, *body_lines] = (
+            pd.read_csv(filepath_or_buffer, **kwargs, header=None, sep=unused_char)
+            .pipe(lambda df: map(one, df.to_records(index=False)))
+        )
+        [header_line, *body_lines]
+        # Compute col widths
+        #   - header_line determines widths for all but the last col, which might have values that extend past the header
+        #   - Incorporate body_lines to determine the width of the last col
+        widths_cum = [
+            i + 1
+            for (i, c), (_, d) in windowed(enumerate(header_line), 2)
+            if c != ' ' and d == ' '
+        ]
+        widths_cum = [
+            0,
+            *widths_cum,
+            max(len(line) for line in [header_line, *body_lines]),
+        ]
+        widths = [
+            y - x
+            for x, y in windowed(widths_cum, 2)
+        ]
+
+    return pd.read_fwf(filepath_or_buffer,
+        widths=widths,
+        **kwargs,
+    )
+
+
+def df_to_fwf_df(df: pd.DataFrame, reset_index=True, fresh_col_name='_index') -> pd.DataFrame:
+    """
+    Transform a df so that its .to_string() is copy/pastable to a .fwf format
+    - HACK This function returns a new df that ipython/jupyter will display in a copy/paste-able form
+    - TODO Make a function df_to_fwf that actually does the real df->str/file
+    """
+    assert fresh_col_name not in df.columns, f"Refusing to overwrite your col named {fresh_col_name!r}"
+    if df.index.name is not None and reset_index:
+        df = df.reset_index()
+    return (df
+        .assign(**{fresh_col_name: ''})
+        .set_index(fresh_col_name)
+        .pipe(df_set_index_name, None)
+        # Cosmetic: ensure 2 spaces between columns in .to_string()
+        #   - The behavior of .to_string() is 2 spaces of margin around cells, but only 1 space of margin around headers
+        #   - Padding each header string with 1 (leading) space effects 2 spaces of margin around both cells and headers
+        #   - This isn't necessary for pd.read_fwf to work, but it's helpful to the human interacting with the file
+        .rename(columns=lambda c: ' ' + c)
+    )
 
 
 #
