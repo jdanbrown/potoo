@@ -6,7 +6,7 @@ import signal
 import subprocess
 import sys
 import types
-from typing import Callable, Iterable, List, Optional, Tuple, Union
+from typing import Callable, Iterable, Iterator, List, Optional, Tuple, Union
 
 import humanize
 import numpy as np
@@ -133,8 +133,18 @@ def with_options(options):
 #
 
 
+def df_rows(df) -> Iterator['Row']:
+    """Shorthand for a very common idiom"""
+    return (row for i, row in df.iterrows())
+
+
+def df_map_rows(df, f: Callable[['Row'], 'Row'], **kwargs) -> pd.DataFrame:
+    """Shorthand for a very common idiom"""
+    return df.apply(axis=1, func=f, **kwargs)
+
+
 def series_assign(s: pd.Series, **kwargs) -> pd.Series:
-    """Like DataFrame.assign but for Series"""
+    """Like df.assign but for Series"""
     s = s.copy()
     for k, v in kwargs.items():
         s.at[k] = v
@@ -147,6 +157,17 @@ def df_assign_first(df, **kwargs) -> pd.DataFrame:
         .assign(**kwargs)
         .pipe(df_reorder_cols, first=kwargs.keys())
     )
+
+
+def df_col_map(df, **kwargs) -> pd.DataFrame:
+    """
+    Map col values by the given function
+    - A shorthand for a very common usage of df.assign / df.col.map
+    """
+    return df.assign(**{
+        c: df[c].map(f)
+        for c, f in kwargs.items()
+    })
 
 
 # Based on https://github.com/pandas-dev/pandas/issues/8517#issuecomment-247785821
