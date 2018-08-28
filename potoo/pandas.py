@@ -6,10 +6,10 @@ import signal
 import subprocess
 import sys
 import types
-from typing import Callable, Iterable, Iterator, List, Optional, Tuple, Union
+from typing import Callable, Iterable, Iterator, List, Mapping, Optional, Tuple, TypeVar, Union
 
 import humanize
-from more_itertools import one, windowed
+from more_itertools import flatten, one, unique_everseen, windowed
 import numpy as np
 import pandas as pd
 from pandas.api.types import CategoricalDtype
@@ -20,6 +20,9 @@ from potoo.util import get_cols, get_rows, or_else
 # Convenient shorthands for interactive use -- not recommended for durable code that needs to be read and maintained
 DF = pd.DataFrame
 S = pd.Series
+
+X = TypeVar('X')
+
 
 #
 # Global options
@@ -564,6 +567,64 @@ def df_to_fwf_df(df: pd.DataFrame, reset_index=True, fresh_col_name='_index') ->
         #   - This isn't necessary for pd.read_fwf to work, but it's helpful to the human interacting with the file
         .rename(columns=lambda c: ' ' + c)
     )
+
+
+#
+# "Plotting", i.e. styling df html via mpl/plotnine color palettes
+#
+
+
+# TODO Add df_color_col for continuous values (this one is just for discrete values)
+def df_col_color_d(
+    df,
+    _join=',',
+    _stack=False,
+    _extend_cmap=False,
+    **col_cmaps,
+) -> pd.DataFrame:
+    """Color the (discrete) values in a df column (like plotnine.scale_color_cmap_d for tables)"""
+
+    # Lazy imports so we don't hard-require these heavy-ish libs
+    from IPython.display import HTML
+    from mizani.palettes import cmap_d_pal
+    from potoo.plot import mpl_cmap_repeat
+
+    # Break cycling import
+    from potoo.ipython import df_cell_display, df_cell_stack
+
+    def iter_or_singleton(x: Union[Iterable[X], X]) -> Iterable[X]:
+        return [x] if not hasattr(x, '__len__') or isinstance(x, str) else x
+    def color_col(s: pd.Series, cmap):
+        s = cat_to_str(s)  # Else iter_or_singleton tries to make a category of lists, which barfs when it tries to hash
+        vs = list(unique_everseen(
+            v
+            for v in flatten(s.map(iter_or_singleton))
+            if pd.notnull(v)
+        ))
+        # TODO Allow user to control this ordering, like plotnine allows with category dtypes
+        vs = sorted(vs)
+        if _extend_cmap:
+            cmap = mpl_cmap_repeat(len(vs), cmap)
+        colors = dict(zip(vs, cmap_d_pal(cmap)(len(vs))))
+        # FIXME 'text/plain' gets '' from HTML(...) [repro-able? why does this happen?]
+        join = lambda xs: df_cell_stack(xs) if _stack else df_cell_display(HTML(_join.join(xs)))
+        return s.apply(lambda v: join(
+            _html_color(v, colors)
+            for v in iter_or_singleton(v)
+        ))
+    return df.assign(**{
+        col: color_col(df[col], cmap)
+        for col, cmap in col_cmaps.items()
+    })
+
+
+def df_cell_color(x: any, colors: Mapping[any, str]) -> 'df_cell':
+    from potoo.ipython import df_cell_display  # Break cycling import
+    return df_cell_display(HTML(_html_color(x, colors)))
+
+
+def _html_color(x: any, colors: Mapping[any, str]) -> str:
+    return '<span style="color: %s">%s</span>' % (colors.get(x, 'inherit'), x)
 
 
 #
