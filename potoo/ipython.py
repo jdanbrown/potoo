@@ -23,17 +23,25 @@ from potoo.pandas import cat_to_str
 from potoo.util import AttrContext, or_else, deep_round_sig, singleton
 
 
-def ipy_format(*xs: any) -> str:
+def ipy_format(*xs: any, mimetype='text/plain', join='\n') -> str:
     """
     Format like IPython.display.display
     - Spec: print(ipy_format(*xs)) ~ display(*xs)
     - Manually line-join multiple args like display(x, y) does
     """
-    return '\n'.join(
-        formats['text/plain']
+    return join.join(
+        formats.get(mimetype, formats['text/plain'])
         for x in xs
-        for formats, metadata in [get_ipython().display_formatter.format(x)]
+        for formats, _metadata in [get_ipython().display_formatter.format(x)]
     )
+
+
+def ipy_text(*xs: any) -> str:
+    return ipy_format(*xs, mimetype='text/plain', join='\n')
+
+
+def ipy_html(*xs: any) -> str:
+    return ipy_format(*xs, mimetype='text/html', join='<br/>')
 
 
 def ipy_print(*xs: any, **kwargs) -> str:
