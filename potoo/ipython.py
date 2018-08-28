@@ -7,7 +7,7 @@ import os
 import random
 import signal
 import time
-from typing import Iterable, Tuple
+from typing import Iterable, Tuple, Union
 
 from attrdict import AttrDict
 from dataclasses import dataclass
@@ -295,6 +295,23 @@ class df_cell:
     @classmethod
     def many(cls, xs: Iterable[any]) -> Iterable['cls']:
         return [cls(x) for x in xs]
+
+
+# TODO Untested
+class df_cell_union(df_cell):
+    """
+    Union the mimebundles of multiple df_cell's
+    """
+
+    def _repr_mimebundle_(self, include=None, exclude=None):
+        df_cells = list(self.value)  # Materialize iters
+        df_cells = [x if isinstance(x, df_cell) else df_cell_display(x) for x in df_cells]  # Coerce to df_cell
+        ret = {}
+        for cell in df_cells:
+            for k, v in cell._repr_mimebundle_(include=include, exclude=exclude).items():
+                print(('[kv]', k, v))
+                ret.setdefault(k, v)
+        return ret
 
 
 class df_cell_display(df_cell):
