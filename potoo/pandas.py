@@ -151,7 +151,7 @@ def series_assign(s: pd.Series, **kwargs) -> pd.Series:
     """Like df.assign but for Series"""
     s = s.copy()
     for k, v in kwargs.items():
-        s.at[k] = v
+        s.at[k] = v if not callable(v) else v(s.at[k])
     return s
 
 
