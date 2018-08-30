@@ -35,8 +35,9 @@ def puts(x, f=lambda x: x):
     return tap(x, f=lambda x: print(f(x)))
 
 
-def dirs(x, _=False, __=False):
+def dirs(x, _=False, __=False, __globals__=False):
     return {k: getattr(x, k) for k in dir(x) if all([
+        not k == '__globals__' or __globals__,
         not k.startswith('__') or __,
         not k.startswith('_') or _,
     ])}
