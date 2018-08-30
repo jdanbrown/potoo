@@ -183,7 +183,10 @@ class ipy_formats(AttrContext):
                 #   - TODO Can we clean this up now that we have df_cell_str...?
                 stack.enter_context(pd.option_context('display.max_colwidth', -1))
             if mimetype == 'text/html':
-                return df.to_html(escape=False)  # escape=False to allow html in cells
+                s = df.to_html(escape=False)  # escape=False to allow html in cells
+                # HACK Hide '\n' from df.to_html, else it incorrectly renders them as '\\n' (and breaks e.g. <script>)
+                s = s.replace('\a', '\n')
+                return s
             else:
                 return df.to_string()
 
@@ -212,6 +215,10 @@ class ipy_formats(AttrContext):
         #   - TODO Should this be: _has_number(ret)? _has_number(x)? _has_number(col) from one frame above?
         if mimetype == 'text/html' and not self._has_number(ret):
             ret = '<div class="not-number">%s</div>' % (ret,)
+
+        # HACK Hide '\n' from df.to_html, else it incorrectly renders them as '\\n' (and breaks e.g. <script>)
+        if mimetype == 'text/html' and isinstance(ret, str):
+            ret = ret.replace('\n', '\a')
 
         return ret
 
