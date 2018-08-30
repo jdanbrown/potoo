@@ -32,8 +32,13 @@ def ipy_format(*xs: any, mimetype='text/plain', join='\n') -> str:
     return join.join(
         formats.get(mimetype, formats['text/plain'])
         for x in xs
-        for formats, _metadata in [get_ipython().display_formatter.format(x)]
+        for formats in [ipy_all_formats(x)]
     )
+
+
+def ipy_all_formats(x: any) -> str:
+    formats, _metadata = get_ipython().display_formatter.format(x)
+    return formats
 
 
 def ipy_text(*xs: any) -> str:
@@ -239,28 +244,9 @@ class ipy_formats(AttrContext):
             #   - e.g. datetime.date: pandas '2000-01-01' vs. str() 'datetime.date(2000, 1, 1)'
             return truncate_like_pd_max_colwidth(x)
 
-        # If _fancy_cells and a df_cell value, format to str using ipython formatters, to emulate ipython display()
-        #   - TODO Clean up / modularize dispatch on format
-        #   - TODO Handle more formats (svg, ...)
+        # If _fancy_cells and a df_cell value, format to html str like ipython display()
         else:
-            ret = None
-            formats = x._repr_mimebundle_()
-            if mimetype == 'text/html':
-                html = formats.get('text/html')
-                img_types = [k for k in formats.keys() if k.startswith('image/')]
-                if html:
-                    ret = html.strip()
-                elif img_types:
-                    img_type = first(img_types)
-                    img = formats[img_type]
-                    if isinstance(img, str):
-                        img_b64 = img.strip()
-                    elif isinstance(img, bytes):
-                        img_b64 = base64.b64encode(img).decode()
-                    ret = f'<img src="data:{img_type};base64,{img_b64}"></img>'
-            if ret is None:
-                ret = formats['text/plain']
-            return ret
+            return ipy_formats_to_mimetype(x, mimetype=mimetype)
 
     def _has_number(self, x: any) -> bool:
         return (
@@ -285,6 +271,40 @@ class ipy_formats(AttrContext):
     #     # Use complex(...) instead of type(z)(...), since complex parses from str but e.g. np.complex128 doesn't.
     #     # Use z.__format___ instead of '%.3g' % ..., since the latter doesn't support complex numbers (dunno why).
     #     return complex(z.__format__('.%sg' % self.precision))
+
+
+def ipy_formats_to_text(x: any) -> str:
+    """Format to text str using ipython formatters, to emulate ipython display()"""
+    return ipy_formats_to_mimetype(x, mimetype='text/plain')
+
+
+def ipy_formats_to_html(x: any) -> str:
+    """Format to html str using ipython formatters, to emulate ipython display()"""
+    return ipy_formats_to_mimetype(x, mimetype='text/html')
+
+
+def ipy_formats_to_mimetype(x: any, mimetype: str) -> str:
+    """Format to str for mimetype using ipython formatters, to emulate ipython display()"""
+    # TODO Clean up / modularize dispatch on format
+    # TODO Handle more formats (svg, ...)
+    ret = None
+    formats = ipy_all_formats(x)
+    if mimetype == 'text/html':
+        html = formats.get('text/html')
+        img_types = [k for k in formats.keys() if k.startswith('image/')]
+        if html:
+            ret = html.strip()
+        elif img_types:
+            img_type = first(img_types)
+            img = formats[img_type]
+            if isinstance(img, str):
+                img_b64 = img.strip()
+            elif isinstance(img, bytes):
+                img_b64 = base64.b64encode(img).decode()
+            ret = f'<img src="data:{img_type};base64,{img_b64}"></img>'
+    if ret is None:
+        ret = formats['text/plain']
+    return ret
 
 
 @dataclass
