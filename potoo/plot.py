@@ -489,6 +489,7 @@ def show_img(
         elif isinstance(scale, (tuple, list)):
             (wx, hx) = scale
             scale = dict(wx=wx, hx=hx)
+        scale = dict(scale)  # Copy so we can mutate
         scale.setdefault('wx', 1)
         scale.setdefault('hx', 1)
         if 'w' not in scale and 'h' not in scale:
