@@ -74,6 +74,19 @@ def debug_print(*args, _lines=False, **kwargs):
     ))
 
 
+@contextmanager
+def profile_block(dump_path):
+    import cProfile as profile
+    p = profile.Profile()
+    p.enable()
+    try:
+        yield
+    finally:
+        p.disable()
+        p.dump_stats(dump_path)
+        debug_print('Dumped stats to: %s' % dump_path)
+
+
 def singleton(cls):
     return cls()
 
