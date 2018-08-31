@@ -2,6 +2,7 @@ import collections
 from contextlib import contextmanager
 from datetime import datetime
 from functools import partial
+import inspect
 import numbers
 import os
 import pipes
@@ -45,6 +46,32 @@ def dirs(x, _=False, __=False, __globals__=False):
 # print(); pp(list(dirs(x, _=False).keys()))
 # print(); pp(list(dirs(x, __=False).keys()))
 # print(); pp(list(dirs(x).keys()))
+
+
+def debug_print(*args, _lines=False, **kwargs):
+    """
+    printf debugging that includes the source filename, line number, and function name
+
+    Example usage:
+        debug_print()                                  # Print enough info to know what line you hit
+        debug_print('x exists')                        # Add a msg
+        debug_print('x exists', x)                     # Add a msg with data
+        debug_print(x=x, i=i, **kwargs)                # Just dump lots of stuff
+        debug_print(x=x, i=i, **kwargs, _lines=False)  # Give each value its own line
+    """
+    caller = inspect.stack(context=0)[1]
+    msg_vals = [*args, *['%s=%s' % (k, v) for k, v in kwargs.items()]]
+    msg = (
+        '' if not msg_vals else
+        ': %s' % ', '.join(msg_vals) if not _lines else
+        '\n  %s' % '\n  '.join(msg_vals)
+    )
+    print('[%s:%s] %s%s' % (
+        os.path.basename(caller.filename),
+        caller.lineno,
+        caller.function,
+        msg,
+    ))
 
 
 def singleton(cls):
