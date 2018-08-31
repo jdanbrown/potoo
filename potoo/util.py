@@ -63,8 +63,8 @@ def debug_print(*args, _lines=False, **kwargs):
     msg_vals = [*args, *['%s=%s' % (k, v) for k, v in kwargs.items()]]
     msg = (
         '' if not msg_vals else
-        ': %s' % ', '.join(msg_vals) if not _lines else
-        '\n  %s' % '\n  '.join(msg_vals)
+        ': %s' % ', '.join(map(str, msg_vals)) if not _lines else
+        '\n  %s' % '\n  '.join(map(str, msg_vals))
     )
     print('[%s:%s] %s%s' % (
         os.path.basename(caller.filename),
