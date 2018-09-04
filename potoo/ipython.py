@@ -11,7 +11,9 @@ from typing import Iterable, Tuple, Union
 
 from attrdict import AttrDict
 from dataclasses import dataclass
-from IPython.core.getipython import get_ipython
+import IPython
+from IPython import get_ipython
+from IPython.core.interactiveshell import InteractiveShell
 from IPython.display import *
 from more_itertools import first
 import numpy as np
@@ -408,3 +410,28 @@ def truncate_like_pd_max_colwidth(x: any) -> str:
             return s
         else:
             return s[:max_colwidth - 3] + '...'
+
+
+def ipy_install_mock_get_ipython():
+    """
+    Ever wanted to use get_ipython() from a normal python process? Like a production webserver? Here you go.
+
+    This is pretty heinous, but it works great!
+    """
+
+    # Create a mock ipy
+    ipy = IPython.terminal.embed.InteractiveShellEmbed()
+    ipy.dummy_mode = True  # Not sure what this does, but sounds maybe really important
+
+    # "Enable all formatters", else you only get 'text/plain', never 'text/html' (or others)
+    #   - From: https://github.com/ipython/ipython/blob/0de2f49/IPython/core/tests/test_interactiveshell.py#L779-L780
+    ipy.display_formatter.active_types = ipy.display_formatter.format_types
+
+    # Moneypatch get_ipython() to return our mock ipy
+    InteractiveShell.initialized = lambda *args, **kwargs: True
+    InteractiveShell.instance = lambda *args, **kwargs: ipy
+    assert get_ipython() is not None
+
+    # Tests:
+    #   df = pd.DataFrame(['foo'])
+    #   assert 'text/html' in ipy.display_formatter.format(df)[0]
