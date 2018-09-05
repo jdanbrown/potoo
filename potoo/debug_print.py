@@ -10,8 +10,9 @@ Example usage:
     debug_print(x=x, i=i, **kwargs, _lines=False)  # Give each value its own line
 """
 
-import os
+from datetime import datetime
 import inspect
+import os
 import sys
 import types
 
@@ -24,9 +25,10 @@ def _debug_print(*args, _lines=False, **kwargs):
         ': %s' % ', '.join(map(str, msg_vals)) if not _lines else
         '\n  %s' % '\n  '.join(map(str, msg_vals))
     )
-    print('[%s:%s] %s%s' % (
+    print('[%s:%s %s] %s%s' % (
         os.path.basename(caller.filename),
         caller.lineno,
+        datetime.utcnow().isoformat()[11:23],  # Strip date + micros
         caller.function,
         msg,
     ))
