@@ -167,7 +167,7 @@ class ipy_formats(AttrContext):
                 lambda g: ' ',
             )
 
-    def _format_df(self, df: pd.DataFrame, mimetype: str) -> str:
+    def _format_df(self, df: pd.DataFrame, mimetype: str, **df_to_kwargs) -> str:
         with contextlib.ExitStack() as stack:
             # Implicitly trigger _fancy_cells by putting >0 df_cell values in your df (typical usage is whole cols)
             stack.enter_context(self.context(_fancy_cells=df.applymap(lambda x: isinstance(x, df_cell)).any().any()))
@@ -185,12 +185,15 @@ class ipy_formats(AttrContext):
                 #   - TODO Can we clean this up now that we have df_cell_str...?
                 stack.enter_context(pd.option_context('display.max_colwidth', -1))
             if mimetype == 'text/html':
-                s = df.to_html(escape=False)  # escape=False to allow html in cells
-                # HACK Hide '\n' from df.to_html, else it incorrectly renders them as '\\n' (and breaks e.g. <script>)
-                s = s.replace('\a', '\n')
-                return s
+                return (
+                    df.to_html(**df_to_kwargs,
+                        escape=False,  # Allow html in cells
+                    )
+                    # HACK Hide '\n' from df.to_html, else it incorrectly renders them as '\\n' (and breaks <script>)
+                    .replace('\a', '\n')
+                )
             else:
-                return df.to_string()
+                return df.to_string(**df_to_kwargs)
 
     def _format_series(self, s: pd.Series, mimetype: str) -> str:
         # cat_to_str to avoid .apply mapping all cat values, which we don't need and could be slow for large cats
@@ -218,7 +221,7 @@ class ipy_formats(AttrContext):
         if mimetype == 'text/html' and not self._has_number(ret):
             ret = '<div class="not-number">%s</div>' % (ret,)
 
-        # HACK Hide '\n' from df.to_html, else it incorrectly renders them as '\\n' (and breaks e.g. <script>)
+        # HACK Hide '\n' from df.to_html, else it incorrectly renders them as '\\n' (and breaks <script>)
         if mimetype == 'text/html' and isinstance(ret, str):
             ret = ret.replace('\n', '\a')
 
