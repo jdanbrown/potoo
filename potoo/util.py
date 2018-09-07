@@ -147,12 +147,13 @@ class AttrContext:
             raise ValueError(f'Unknown attrs: {unknown}')
 
 
-def shell(cmd, **kwargs):
+def shell(cmd, _verbose=True, **kwargs):
     cmd = cmd % {
         k: shlex.quote(str(v))
         for k, v in kwargs.items()
     }
-    print(f'$ {cmd}', file=sys.stderr)
+    if _verbose:
+        print(f'$ {cmd}', file=sys.stderr)
     return subprocess.run(cmd, shell=True, check=True)
 
 
