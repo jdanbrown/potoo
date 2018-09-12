@@ -142,9 +142,9 @@ def df_rows(df) -> Iterator['Row']:
     return (row for i, row in df.iterrows())
 
 
-def df_map_rows(df, f: Callable[['Row'], 'Row'], **kwargs) -> pd.DataFrame:
+def df_map_rows(df, f: Callable[['Row'], 'Row'], *args, **kwargs) -> pd.DataFrame:
     """Shorthand for a very common idiom"""
-    return df.apply(axis=1, func=f, **kwargs)
+    return df.apply(axis=1, func=f, *args, **kwargs)
 
 
 def series_assign(s: pd.Series, **kwargs) -> pd.Series:
