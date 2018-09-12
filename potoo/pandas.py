@@ -452,25 +452,26 @@ def df_ensure(df, **kwargs):
 #     return decorator
 
 
-def requires_cols(*cols):
-    cols = [c for c in cols if c != ...]
+def requires_cols(*required_cols):
+    required_cols = [c for c in required_cols if c != ...]
     def decorator(f):
         @wraps(f)
         def g(*args, **kwargs) -> any:
-            df = _find_df_in_args(*args, **kwargs)
-            if any(c not in df for c in cols):
-                raise ValueError(f'Expected cols[{cols}] in df.columns[{df.columns}]')
+            input = _find_first_df_or_series_in_args(*args, **kwargs)
+            input_cols = input.columns if isinstance(input, pd.DataFrame) else input.index  # df.columns or series.index
+            if not set(required_cols) <= set(input_cols):
+                raise ValueError(f'requires_col: required_cols[{required_cols}] not all in input_cols[{input_cols}]')
             return f(*args, **kwargs)
         return g
     return decorator
 
 
-def _find_df_in_args(*args, **kwargs):
+def _find_first_df_or_series_in_args(*args, **kwargs):
     for x in [*args, *kwargs.values()]:
-        if isinstance(x, pd.DataFrame):
+        if isinstance(x, (pd.DataFrame, pd.Series)):
             return x
     else:
-        raise ValueError('No df found in args')
+        raise ValueError('No df or series found in args')
 
 
 def df_style_cell(*styles: Union[
