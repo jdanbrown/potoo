@@ -19,7 +19,7 @@ import types
 
 def _debug_print(*args, _lines=False, **kwargs):
     caller = inspect.stack(context=0)[2]
-    msg_vals = [*args, *['%s=%s' % (k, v) for k, v in kwargs.items()]]
+    msg_vals = [*args, *['%s=%r' % (k, v) for k, v in kwargs.items()]]
     msg = (
         '' if not msg_vals else
         ': %s' % ', '.join(map(str, msg_vals)) if not _lines else
