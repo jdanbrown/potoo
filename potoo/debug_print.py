@@ -25,7 +25,8 @@ def _debug_print(*args, _lines=False, _depth=1, **kwargs):
         ': %s' % ', '.join(map(str, msg_vals)) if not _lines else
         '\n  %s' % '\n  '.join(map(str, msg_vals))
     )
-    print('PRINT [%s] [%s:%s] %s%s' % (
+    print('%s [%s] [%s:%s] %s%s' % (
+        '%-8s' % 'PRINT',  # %-8s like a typical logging format (which has to fit 'CRITICAL')
         datetime.utcnow().isoformat()[11:23],  # Strip date + micros
         os.path.basename(caller.filename),
         caller.lineno,
