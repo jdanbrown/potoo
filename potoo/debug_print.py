@@ -17,8 +17,8 @@ import sys
 import types
 
 
-def _debug_print(*args, _lines=False, **kwargs):
-    caller = inspect.stack(context=0)[2]
+def _debug_print(*args, _lines=False, _depth=1, **kwargs):
+    caller = inspect.stack(context=0)[_depth]
     msg_vals = [*args, *['%s=%r' % (k, v) for k, v in kwargs.items()]]
     msg = (
         '' if not msg_vals else
@@ -32,6 +32,14 @@ def _debug_print(*args, _lines=False, **kwargs):
         caller.function,
         msg,
     ))
+    # Return first arg (like puts)
+    #   - Support args (e.g. debug_print(x)) as well as kwargs (e.g. debug_print(x=x))
+    if args:
+        return args[0]
+    elif kwargs:
+        return list(kwargs.values())[0]
+    else:
+        return None
 
 
 class module(types.ModuleType):
@@ -39,8 +47,7 @@ class module(types.ModuleType):
     def __init__(self):
         super().__init__(__name__)
 
-    def __call__(self, *args, **kwargs):
-        _debug_print(*args, **kwargs)
-
+    def __call__(self, *args, _depth=2, **kwargs):
+        return _debug_print(*args, **kwargs, _depth=_depth)
 
 sys.modules[__name__] = module()
