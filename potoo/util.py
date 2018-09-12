@@ -5,6 +5,7 @@ from functools import partial
 import inspect
 import numbers
 import os
+from pathlib import Path
 import pipes
 import shlex
 import shutil
@@ -103,6 +104,22 @@ def or_else(x, f):
 def raise_(e):
     """Raise in an expression instead of a statement"""
     raise e
+
+
+def path_is_contained_by(path: str, parent: str) -> bool:
+    """
+    Examples:
+        path_is_contained_by('a/b/c',  'a/b')   == True
+        path_is_contained_by('a/b',    'a/b')   == True
+        path_is_contained_by('a/b',    'a/b/c') == False
+        path_is_contained_by('a/b/c',  'a/b/')  == True
+        path_is_contained_by('/a/b/c', '/a/b')  == True
+        path_is_contained_by('/a/x/y', '/a/b')  == False
+        path_is_contained_by('a/b/c',  '/a/b/') -> ValueError("Can't mix absolute and relative paths")
+        path_is_contained_by('/a/b/c', 'a/b/')  -> ValueError("Can't mix absolute and relative paths")
+    """
+    # Wrap both values in Path(...) so that e.g. Path('x/') == Path('x')
+    return Path(os.path.commonpath([path, parent])) == Path(parent)
 
 
 # XXX Use AttrDict
