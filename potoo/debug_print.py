@@ -25,10 +25,10 @@ def _debug_print(*args, _lines=False, **kwargs):
         ': %s' % ', '.join(map(str, msg_vals)) if not _lines else
         '\n  %s' % '\n  '.join(map(str, msg_vals))
     )
-    print('[%s:%s %s] %s%s' % (
+    print('PRINT [%s] [%s:%s] %s%s' % (
+        datetime.utcnow().isoformat()[11:23],  # Strip date + micros
         os.path.basename(caller.filename),
         caller.lineno,
-        datetime.utcnow().isoformat()[11:23],  # Strip date + micros
         caller.function,
         msg,
     ))
