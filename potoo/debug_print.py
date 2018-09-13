@@ -17,7 +17,7 @@ import sys
 import types
 
 
-def _debug_print(*args, _lines=False, _depth=1, **kwargs):
+def _debug_print(*args, _lines=False, _depth=1, _quiet=False, **kwargs):
     caller = inspect.stack(context=0)[_depth]
     msg_vals = [*args, *['%s=%r' % (k, v) for k, v in kwargs.items()]]
     msg = (
@@ -25,14 +25,15 @@ def _debug_print(*args, _lines=False, _depth=1, **kwargs):
         ': %s' % ', '.join(map(str, msg_vals)) if not _lines else
         '\n  %s' % '\n  '.join(map(str, msg_vals))
     )
-    print('%s [%s] [%s:%s] %s%s' % (
-        '%-8s' % 'PRINT',  # %-8s like a typical logging format (which has to fit 'CRITICAL')
-        datetime.utcnow().isoformat()[11:23],  # Strip date + micros
-        os.path.basename(caller.filename),
-        caller.lineno,
-        caller.function,
-        msg,
-    ))
+    if not _quiet:
+        print('%s [%s] [%s:%s] %s%s' % (
+            '%-8s' % 'PRINT',  # %-8s like a typical logging format (which has to fit 'CRITICAL')
+            datetime.utcnow().isoformat()[11:23],  # Strip date + micros
+            os.path.basename(caller.filename),
+            caller.lineno,
+            caller.function,
+            msg,
+        ))
     # Return first arg (like puts)
     #   - Support args (e.g. debug_print(x)) as well as kwargs (e.g. debug_print(x=x))
     if args:
@@ -49,6 +50,18 @@ class module(types.ModuleType):
         super().__init__(__name__)
 
     def __call__(self, *args, _depth=2, **kwargs):
+        """
+        Avoid one step in the import, e.g.
+            from potoo import debug_print
+            debug_print('foo', x=x, y=y)
+        """
         return _debug_print(*args, **kwargs, _depth=_depth)
+
+    def quiet(self, *args, _depth=2, **kwargs):
+        """
+        Temporarily disable a debug_print in expression context, e.g.
+            x + debug_print.quiet(y=y)
+        """
+        return _debug_print(*args, **kwargs, _depth=_depth, _quiet=True)
 
 sys.modules[__name__] = module()
