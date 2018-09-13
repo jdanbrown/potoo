@@ -18,23 +18,32 @@ import types
 
 
 def _debug_print(*args, _lines=False, _depth=1, _quiet=False, **kwargs):
-    caller = inspect.stack(context=0)[_depth]
-    msg_vals = [*args, *['%s=%r' % (k, v) for k, v in kwargs.items()]]
-    msg = (
-        '' if not msg_vals else
-        ': %s' % ', '.join(map(str, msg_vals)) if not _lines else
-        '\n  %s' % '\n  '.join(map(str, msg_vals))
-    )
+
     if not _quiet:
-        print('%s [%s] %s [%s:%s] %s%s' % (
-            '%-8s' % 'PRINT',  # %-8s like a typical logging format (which has to fit 'CRITICAL')
-            datetime.utcnow().isoformat()[11:23],  # Strip date + micros
-            os.getpid(),
-            os.path.basename(caller.filename),
-            caller.lineno,
-            caller.function,
-            msg,
-        ))
+
+        # Inspect stack for caller's frame
+        caller = inspect.stack(context=0)[_depth]
+
+        # Format and print
+        level = '%-8s' % 'PRINT'  # %-8s like a typical logging format's log level (which has to fit 'CRITICAL')
+        timestamp = datetime.utcnow().isoformat()[11:23]  # Strip date + micros
+        pid = os.getpid()
+        filename = os.path.basename(caller.filename)
+        if filename.startswith('<ipython-input-'):
+            # HACK When debug_print is used in an ipython/jupyter cell (where there's no filename), caller.filename is a
+            # long auto-generated name that's just noise to the human. Simplify it to increase legibility.
+            #   - e.g. '<ipython-input-6-8be52be69711>' -> '<ipython>'
+            filename = filename.split('-', 1)[0] + '>'
+        lineno = caller.lineno
+        function = caller.function
+        msg_vals = [*args, *['%s=%r' % (k, v) for k, v in kwargs.items()]]
+        msg = (
+            '' if not msg_vals else
+            ': %s' % ', '.join(map(str, msg_vals)) if not _lines else
+            '\n  %s' % '\n  '.join(map(str, msg_vals))
+        )
+        print(f'{level} [{timestamp}] {pid} [{filename}:{lineno}] {function}{msg}')
+
     # Return first arg (like puts)
     #   - Support args (e.g. debug_print(x)) as well as kwargs (e.g. debug_print(x=x))
     if args:
