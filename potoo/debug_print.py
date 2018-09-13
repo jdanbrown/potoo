@@ -17,7 +17,7 @@ import sys
 import types
 
 
-def _debug_print(*args, _lines=False, _depth=1, _quiet=False, **kwargs):
+def _debug_print(*args, _lines=False, _depth=1, _quiet=False, _utc=False, **kwargs):
 
     if not _quiet:
 
@@ -26,7 +26,7 @@ def _debug_print(*args, _lines=False, _depth=1, _quiet=False, **kwargs):
 
         # Format and print
         level = '%-8s' % 'PRINT'  # %-8s like a typical logging format's log level (which has to fit 'CRITICAL')
-        timestamp = datetime.utcnow().isoformat()[11:23]  # Strip date + micros
+        timestamp = (datetime.utcnow() if _utc else datetime.now()).isoformat()[11:23]  # Strip date + micros
         pid = os.getpid()
         filename = os.path.basename(caller.filename)
         if filename.startswith('<ipython-input-'):
