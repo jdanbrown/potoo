@@ -1,3 +1,11 @@
+"""
+An %%lprun cell magic like the existing %lprun cell magic from line_profiler
+- For https://github.com/rkern/line_profiler (thanks @rkern!)
+- Based on:
+    - https://github.com/rkern/line_profiler/issues/31
+    - https://gist.github.com/auneri/54600375aa0317b9c47e (thanks @auneri!)
+"""
+
 import secrets
 
 from IPython import get_ipython
