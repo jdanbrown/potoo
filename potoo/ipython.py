@@ -67,6 +67,13 @@ def is_ipython_notebook():
     return or_else(None, lambda: get_ipython().__class__.__name__) == 'ZMQInteractiveShell'
 
 
+def ipy_load_ext_no_warnings(module_str: str) -> str:
+    """Like %load_ext, except silence warnings (e.g. when the extension is already loaded)"""
+    # The warnings are emitted from ExtensionMagics.load_ext (see its source), so we just call what it calls
+    ipy = get_ipython()
+    return ipy.extension_manager.load_extension(module_str)
+
+
 def disable_special_control_backslash_handler():
     """
     Replace special ipy binding for C-\ with normal os SIGQUIT handler
