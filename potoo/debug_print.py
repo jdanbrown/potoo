@@ -32,7 +32,7 @@ def _debug_print(*args, _lines=False, _depth=1, _quiet=False, _utc=False, **kwar
         module = inspect.getmodule(caller.frame)
         module = module and module.__name__
         function = caller.function
-        module_function = f'{module}.{function}' if module else function
+        module_function = f'{module}/{function}' if module else function
         msg_vals = [*args, *['%s=%r' % (k, v) for k, v in kwargs.items()]]
         msg = (
             '' if not msg_vals else
