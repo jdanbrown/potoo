@@ -17,6 +17,33 @@ import sys
 import types
 
 
+# HACK Build our own module object to install in place of the current module
+class DebugPrint(types.ModuleType):
+
+    def __init__(self):
+        super().__init__(__name__)
+
+    def __call__(self, *args, _depth=2, **kwargs):
+        """
+        Avoid one step in the import, e.g.
+            from potoo import debug_print
+            debug_print('foo', x=x, y=y)
+        """
+        return _debug_print(*args, **kwargs, _depth=_depth)
+
+    def quiet(self, *args, _depth=2, **kwargs):
+        """
+        Temporarily disable a debug_print in expression context, e.g.
+            x + debug_print.quiet(y=y)
+        """
+        return _debug_print(*args, **kwargs, _depth=_depth, _quiet=True)
+
+
+# HACK Install our own module object in place of the current module
+debug_print = DebugPrint()
+sys.modules[__name__] = debug_print
+
+
 def _debug_print(*args, _lines=False, _depth=1, _quiet=False, _utc=False, **kwargs):
 
     if not _quiet:
@@ -39,7 +66,12 @@ def _debug_print(*args, _lines=False, _depth=1, _quiet=False, _utc=False, **kwar
             ': %s' % ', '.join(map(str, msg_vals)) if not _lines else
             '\n  %s' % '\n  '.join(map(str, msg_vals))
         )
-        print(f'{level} [{timestamp}] [{pid:5d}]{lineno:4d} {module_function}{msg}')
+        # print(f'{level} [{timestamp}] [{pid:5d}]{lineno:4d} {module_function}{msg}')
+        level     = color('cyan',  level)
+        timestamp = color('black', '[%s]'  % timestamp)
+        pid       = color('black', '[%5d]' % pid)
+        lineno    = color('black', '%4d'   % lineno)
+        print(f'{level} {timestamp} {pid}{lineno} {module_function}{msg}')
 
     # Return first arg (like puts)
     #   - Support args (e.g. debug_print(x)) as well as kwargs (e.g. debug_print(x=x))
@@ -51,24 +83,27 @@ def _debug_print(*args, _lines=False, _depth=1, _quiet=False, _utc=False, **kwar
         return None
 
 
-class module(types.ModuleType):
+# Poor man's crayons/colorama, to avoid adding an external dependency so we can eventually make this a lightweight pkg
+def color(color: str, s: str, bold=True) -> str:
+    if sys.stdout.isatty():
+        s = ''.join([
+            _color_codes[color],
+            _color_codes['bold'] if bold else '',
+            s,
+            _color_codes['off'],
+        ])
+    return s
 
-    def __init__(self):
-        super().__init__(__name__)
 
-    def __call__(self, *args, _depth=2, **kwargs):
-        """
-        Avoid one step in the import, e.g.
-            from potoo import debug_print
-            debug_print('foo', x=x, y=y)
-        """
-        return _debug_print(*args, **kwargs, _depth=_depth)
-
-    def quiet(self, *args, _depth=2, **kwargs):
-        """
-        Temporarily disable a debug_print in expression context, e.g.
-            x + debug_print.quiet(y=y)
-        """
-        return _debug_print(*args, **kwargs, _depth=_depth, _quiet=True)
-
-sys.modules[__name__] = module()
+_color_codes = {
+    'black':   '\x1b[30m',
+    'red':     '\x1b[31m',
+    'green':   '\x1b[32m',
+    'yellow':  '\x1b[33m',
+    'blue':    '\x1b[34m',
+    'magenta': '\x1b[35m',
+    'cyan':    '\x1b[36m',
+    'white':   '\x1b[37m',
+    'bold':    '\x1b[1m',
+    'off':     '\x1b[m\x0f',
+}
