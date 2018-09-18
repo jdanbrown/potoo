@@ -1,5 +1,5 @@
 import collections
-from contextlib import contextmanager
+from contextlib import AbstractContextManager, contextmanager
 from datetime import datetime
 from functools import partial, wraps
 import inspect
@@ -155,13 +155,7 @@ class AttrContext:
         self._raise_on_unknown_attrs(attrs)
         to_restore = {k: v for k, v in self.__dict__.items() if k in attrs}  # Don't overwrite unrelated mutations
         self.__dict__.update(attrs)
-        @contextmanager
-        def ctx():
-            try:
-                yield
-            finally:
-                self.__dict__.update(to_restore)
-        return ctx()
+        return context_onexit(lambda: self.__dict__.update(to_restore))
 
     def set(self, **attrs):
         self._raise_on_unknown_attrs(attrs)
@@ -171,6 +165,16 @@ class AttrContext:
         unknown = {k: v for k, v in attrs.items() if k not in self.__dict__}
         if unknown:
             raise ValueError(f'Unknown attrs: {unknown}')
+
+
+def context_onexit(f, *args, **kwargs) -> AbstractContextManager:
+    @contextmanager
+    def cm():
+        try:
+            yield
+        finally:
+            f(*args, **kwargs)
+    return cm()
 
 
 def shell(cmd, _verbose=True, **kwargs):
