@@ -474,6 +474,17 @@ def _find_first_df_or_series_in_args(*args, **kwargs):
         raise ValueError('No df or series found in args')
 
 
+def requires_nonempty_rows(f):
+    @wraps(f)
+    def g(*args, **kwargs) -> any:
+        input = _find_first_df_or_series_in_args(*args, **kwargs)
+        input_cols = input.columns if isinstance(input, pd.DataFrame) else input.index  # df.columns or series.index
+        if input.empty:
+            raise ValueError(f'requires_nonempty_rows: rows are empty ({input})')
+        return f(*args, **kwargs)
+    return g
+
+
 def df_style_cell(*styles: Union[
     Tuple[Callable[['cell'], bool], 'style'],
     Tuple['cell', 'style'],
