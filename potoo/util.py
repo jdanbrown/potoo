@@ -1,7 +1,7 @@
 import collections
 from contextlib import contextmanager
 from datetime import datetime
-from functools import partial
+from functools import partial, wraps
 import inspect
 import numbers
 import os
@@ -49,6 +49,15 @@ def dirs(x, _=False, __=False, __globals__=False):
 # print(); pp(list(dirs(x, _=False).keys()))
 # print(); pp(list(dirs(x, __=False).keys()))
 # print(); pp(list(dirs(x).keys()))
+
+
+def generator_to(agg):
+    def decorator(f):
+        @wraps(f)
+        def g(*args, **kwargs):
+            return agg(f(*args, **kwargs))
+        return g
+    return decorator
 
 
 @contextmanager
