@@ -74,7 +74,7 @@ def set_display(**kwargs):
     # HACK This is all horrible and I hate it. After much trial and error I settled on this as a way to make both
     # ipython (terminal) and ipykernel (atom) work.
     try:
-        size = os.get_terminal_size(sys.__stdout__.fileno())
+        size = os.get_terminal_size(sys.__stdout__.fileno())  # [TODO Why didn't I use shutil.get_terminal_size here?]
     except OSError:
         # If ipykernel
         lines = ipykernel_lines
