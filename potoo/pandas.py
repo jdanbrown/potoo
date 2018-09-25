@@ -437,6 +437,24 @@ def df_ensure(df, **kwargs):
     return df
 
 
+def df_require_nonempty(df, e: Union[str, Exception]) -> pd.DataFrame:
+    """
+    Raise if df is empty, else return df. Useful in pipelines, e.g.
+        (df
+            ...
+            .pipe(df_require_nonempty, f'No requested things found: x[{x}], y[{y}]')  # -> ValueError
+            ...
+            .pipe(df_require_nonempty, AssertionError(f'Oops, my fault'))
+            ...
+        )
+    """
+    if df.empty:
+        if isinstance(e, str):
+            e = ValueError(e)
+        raise e
+    return df
+
+
 # XXX Obviated by df_ensure?
 # def produces_cols(*cols):
 #     cols = [c for c in cols if c != ...]
