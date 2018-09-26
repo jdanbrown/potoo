@@ -191,15 +191,15 @@ def mkdir_p(dir):
     os.system("mkdir -p %s" % pipes.quote(dir))  # Don't error like os.makedirs
 
 
-def timed_print(f, **kwargs):
+def timed_print(f, print=print, **kwargs):
     elapsed, x = timed_format(f, **kwargs)
     print(elapsed)
     return x
 
 
-def timed_format(f, **kwargs):
+def timed_format(f, msg='[%s]', **kwargs):
     elapsed_s, x = timed(f, **kwargs)
-    elapsed = '[%s]' % format_duration(elapsed_s)
+    elapsed = msg % format_duration(elapsed_s)
     return elapsed, x
 
 
