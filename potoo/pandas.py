@@ -512,6 +512,16 @@ def requires_nonempty_rows(f):
     return g
 
 
+def df_require_index_is_trivial(df: pd.DataFrame) -> pd.DataFrame:
+    require_index_is_trivial(df.index)
+    return df
+
+
+def require_index_is_trivial(index: pd.Index) -> pd.Index:
+    pd.testing.assert_index_equal(index, pd.RangeIndex(len(index)))
+    return index
+
+
 def df_style_cell(*styles: Union[
     Tuple[Callable[['cell'], bool], 'style'],
     Tuple['cell', 'style'],
