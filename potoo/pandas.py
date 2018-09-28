@@ -392,28 +392,37 @@ def cat_to_str(s: pd.Series) -> pd.Series:
     return s.astype('str') if s.dtype.name == 'category' else s
 
 
-def df_transform_cat(df: pd.DataFrame, f: Callable[[List[str]], Iterable[str]], *col_names) -> pd.DataFrame:
-    """
-    Transform the cat.categories values to f(cat.categories) for each category column given in col_names
-    """
-    return df.assign(**{col_name: transform_cat(df[col_name], f) for col_name in col_names})
-
-
 def df_reverse_cat(df: pd.DataFrame, *col_names) -> pd.DataFrame:
     """
     Reverse the cat.categories values of each (ordered) category column given in col_names
     - Useful e.g. for reversing plotnine axes: https://github.com/has2k1/plotnine/issues/116#issuecomment-365911195
     """
-    return df_transform_cat(df, reversed, *col_names)
+    return df_transform_cats(df, col_names, f=reversed)
 
 
-def transform_cat(s: pd.Series, f: Callable[[List[str]], Iterable[str]]) -> pd.Series:
+def df_transform_cats(
+    df: pd.DataFrame,
+    col_names: str = [],
+    f: Callable[[List[str]], Iterable[str]] = lambda xs: xs,
+    ordered: bool = None,
+) -> pd.DataFrame:
+    """
+    Transform the cat.categories values to f(cat.categories) for each category column given in col_names
+    """
+    return df.assign(**{col_name: transform_cat(df[col_name], f=f, ordered=ordered) for col_name in col_names})
+
+
+def transform_cat(
+    s: pd.Series,
+    f: Callable[[List[str]], Iterable[str]] = lambda xs: xs,
+    ordered: bool = None,
+) -> pd.Series:
     """
     Transform the category values of a categorical series
     """
     return s.astype('str').astype(CategoricalDtype(
         categories=list(f(s.dtype.categories)),
-        ordered=s.dtype.ordered,
+        ordered=ordered if ordered is not None else s.dtype.ordered,
     ))
 
 
