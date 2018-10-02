@@ -204,14 +204,24 @@ def timed_format(f, msg='[%s]', **kwargs):
 
 
 def timed(f, *args, finally_=lambda elapsed_s, x: None, **kwargs):
-    start_s = time.time()
+    timer = timer_start()
     x = None
     try:
         x = f(*args, **kwargs)
     finally:
-        elapsed_s = time.time() - start_s
+        elapsed_s = timer.time()
         finally_(elapsed_s, x)
     return elapsed_s, x
+
+
+class timer_start:
+    """Simplify a common idiom"""
+
+    def __init__(self):
+        self.start_s = time.time()
+
+    def time(self):
+        return time.time() - self.start_s
 
 
 def format_duration(secs):
