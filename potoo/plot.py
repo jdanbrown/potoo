@@ -275,6 +275,7 @@ def graph(f, x: np.array) -> pd.DataFrame:
 
 
 def labels_bytes(**kwargs):
+    """e.g. scale_y_continuous(labels=labels_bytes(), breaks=breaks_bytes())"""
     kwargs.setdefault('gnu', True)
     # kwargs.setdefault('format', '%.3g')  # Bad, e.g. '1e+03M'
     kwargs.setdefault('format', '%.4g')  # Better, e.g. '1000M'
@@ -282,6 +283,11 @@ def labels_bytes(**kwargs):
 
 
 def breaks_bytes(pow: int = None):
+    """
+    e.g.
+        scale_y_continuous(labels=labels_bytes(), breaks=breaks_bytes())       # Works well for MB
+        scale_y_continuous(labels=labels_bytes(), breaks=breaks_bytes(pow=3))  # Manual for GB [FIXME infer_pow should handle this]
+    """
     infer_pow = lambda lims: int(np.log(lims[1] - lims[0]) / np.log(1024) - .5)
     _pow = lambda lims: pow if pow is not None else infer_pow(lims)
     return lambda lims: trans().breaks_(limits=(
