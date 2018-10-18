@@ -14,6 +14,7 @@ import numpy as np
 import pandas as pd
 from pandas.api.types import CategoricalDtype
 
+from potoo import debug_print
 import potoo.numpy
 from potoo.util import get_cols, get_rows, or_else
 
@@ -345,13 +346,15 @@ def df_remove_unused_categories(df: pd.DataFrame) -> pd.DataFrame:
     """
     Do col.remove_unused_categories() for all categorical columns
     """
-    return (df.assign(**{
+    return df.assign(**{
         k: df[k].cat.remove_unused_categories()
         for k in df.columns
         if df[k].dtype.name == 'category'
-    }))
+    })
 
 
+# FIXME Multiple *args appears broken: `.pipe(df_ordered_cat, 'x', 'y')`
+#   - Workaround: `.pipe(df_ordered_cat, 'x').pipe(df_ordered_cat, 'y')`
 def df_ordered_cat(df: pd.DataFrame, *args, transform=lambda x: x, **kwargs) -> pd.DataFrame:
     """
     Map many str series to ordered category series
@@ -360,12 +363,12 @@ def df_ordered_cat(df: pd.DataFrame, *args, transform=lambda x: x, **kwargs) -> 
         **{k: lambda df: df[k].unique() for k in args},
         **kwargs,
     )
-    return (df.assign(**{
+    return df.assign(**{
         k: as_ordered_cat(df[k], list(transform(
             x(df) if isinstance(x, types.FunctionType) else x
         )))
         for k, x in cats.items()
-    }))
+    })
 
 
 def as_ordered_cat(s: pd.Series, ordered_cats: List[str] = None) -> pd.Series:
