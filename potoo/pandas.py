@@ -374,9 +374,9 @@ def df_ordered_cat(df: pd.DataFrame, *args, transform=lambda x: x, **kwargs) -> 
 def as_ordered_cat(s: pd.Series, ordered_cats: List[str] = None) -> pd.Series:
     """
     Map a str series to an ordered category series
-    - If ordered_cats isn't given, list(s) is used (which must produce unique values)
+    - If ordered_cats isn't given, s.unique() is used
     """
-    return s.astype(CategoricalDtype(ordered_cats or list(s), ordered=True))
+    return s.astype(CategoricalDtype(ordered_cats or list(s.unique()), ordered=True))
 
 
 def df_cat_to_str(df: pd.DataFrame) -> pd.DataFrame:
