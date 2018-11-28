@@ -38,13 +38,16 @@ class DebugPrint(types.ModuleType):
         """
         return _debug_print(*args, **kwargs, _depth=_depth, _quiet=True)
 
+    def basic(self, *args, _depth=2, **kwargs):
+        return _debug_print(*args, **kwargs, _depth=_depth, _basic=True)
+
 
 # HACK Install our own module object in place of the current module
 debug_print = DebugPrint()
 sys.modules[__name__] = debug_print
 
 
-def _debug_print(*args, _lines=False, _depth=1, _quiet=False, _utc=False, **kwargs):
+def _debug_print(*args, _lines=False, _depth=1, _quiet=False, _utc=False, _basic=False, **kwargs):
 
     if not _quiet:
 
@@ -71,7 +74,10 @@ def _debug_print(*args, _lines=False, _depth=1, _quiet=False, _utc=False, **kwar
         timestamp = color('black', '[%s]'  % timestamp)
         pid       = color('black', '[%5d]' % pid)
         lineno    = color('black', '%4d'   % lineno)
-        print(f'{level} {timestamp} {pid}{lineno} {module_function}{msg}')
+        if _basic:
+            print(f'{lineno} {module_function}{msg}')
+        else:
+            print(f'{level} {timestamp} {pid}{lineno} {module_function}{msg}')
 
     # Return first arg (like puts)
     #   - Support args (e.g. debug_print(x)) as well as kwargs (e.g. debug_print(x=x))
