@@ -505,7 +505,7 @@ def show_img(
             scale['w'] = int(scale['h'] / image.size[1] * image.size[0])
         elif 'h' not in scale:
             scale['h'] = int(scale['w'] / image.size[0] * image.size[1])
-        scale.setdefault('resample', PIL.Image.HAMMING)
+        scale.setdefault('resample', PIL.Image.NEAREST)
         image = image.resize((scale['w'], scale['h']), resample=scale['resample'])
 
     if show:
