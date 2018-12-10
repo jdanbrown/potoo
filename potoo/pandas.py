@@ -138,9 +138,17 @@ def with_options(options):
 #
 
 
-def quantiles(x, bins: int = 4):
-    (out, _bins) = pd.qcut(x, q=bins, retbins=True)
-    return _bins
+def quantiles(x, q=4, **kwargs):
+    (_x_labeled, bins) = pd.qcut(
+        x,
+        q=q,
+        retbins=True,  # Return bins as extra output
+        **{
+            'duplicates': 'drop', 'labels': False,  # Return shorter list (e.g. [0]) i/o throwing when bin edges aren't unique
+            **kwargs,
+        },
+    )
+    return bins
 
 
 def df_rows(df) -> Iterator['Row']:
