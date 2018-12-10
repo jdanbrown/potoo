@@ -138,6 +138,11 @@ def with_options(options):
 #
 
 
+def quantiles(x, bins: int = 4):
+    (out, _bins) = pd.qcut(x, q=bins, retbins=True)
+    return _bins
+
+
 def df_rows(df) -> Iterator['Row']:
     """Shorthand for a very common idiom"""
     return (row for i, row in df.iterrows())
