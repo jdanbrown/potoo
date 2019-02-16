@@ -1,8 +1,11 @@
-from contextlib import contextmanager
+from contextlib import contextmanager, ExitStack
 from copy import deepcopy
-from functools import reduce
+from functools import partial, reduce
+import itertools
+import re
 import tempfile
 from typing import Callable, Optional, Union
+import warnings
 
 import humanize
 import IPython.display
@@ -730,3 +733,156 @@ def sns_size_aspect(
         size   = rowh,
         aspect = colw / rowh,
     )
+
+
+#
+# pair plots (yay!)
+#
+
+def pd_pairs(df, aspect=1, **kwargs):
+    with ExitStack() as stack:
+        if aspect is not None: stack.enter_context(figsize(aspect=aspect))  # Allow not overriding user's figsize()
+        pd.plotting.scatter_matrix(df, **kwargs)
+
+
+# TODO Support aspect for sns [why doesn't figsize() work?]
+def sns_pairs(df, **kwargs):
+    import seaborn as sns
+    sns.pairplot(df, **kwargs)
+
+
+# TODO Evolve api more towards R ggpairs (but probably not feasible to get 100% there)
+#   - https://www.rdocumentation.org/packages/GGally/versions/1.4.0/topics/ggpairs
+def gg_pairs(
+    df,
+    # aspect=1,           # TODO Support aspect for figsize_per_col/_figsize hackery
+    figsize_per_col=2.5,  # Tune down for many cols (e.g. ~1 for n_cols ~10)
+    _figsize=None,        # Overrides figsize_per_col (e.g. pd.plotting.scatter_matrix uses ~(12.5, 12.5))
+    geom_lower={
+        ('num', 'num'): partial(geom_point,  alpha=.25, size=1),
+        ('cat', 'num'): partial(geom_jitter, alpha=.25, size=1, width=.25),
+        ('num', 'cat'): partial(geom_jitter, alpha=.25, size=1, height=.25),
+        ('cat', 'cat'): partial(geom_jitter, alpha=.25, size=1, width=.25, height=.25),
+        # ('cat', 'cat'): lambda: [geom_count(aes(size='..n..')), scale_size_area()]  # Bad: can only show one legend
+    },
+    geom_diag={
+        'num': geom_histogram,
+        'cat': geom_bar,
+    },
+    geom_upper=None,       # Redundant with geom_lower and slow, so we omit by default
+    geom_upperlower=None,  # Overrides geom_upper + geom_lower
+    sharex=False,
+    sharey=False,
+    _theme=theme_light,
+    progress='tqdm',  # Uses tqdm (if installed)
+    **kwargs,
+):
+
+    # Params
+    _figsize = _figsize or tuple([figsize_per_col * len(df.columns)] * 2)
+    if progress == 'tqdm':
+        try:
+            from tqdm import tqdm
+            progress = tqdm
+        except:
+            progress = None
+    if not progress:
+        progress = lambda x: x
+
+    # Promote param types
+    if geom_upperlower:
+        geom_upper = geom_lower = geom_upperlower
+    if not isinstance(geom_lower, dict):
+        geom_lower = {
+            ('num', 'num'): geom_lower,
+            ('num', 'cat'): geom_lower,
+            ('cat', 'num'): geom_lower,
+            ('cat', 'cat'): geom_lower,
+        }
+    if not isinstance(geom_upper, dict):
+        geom_upper = {
+            ('num', 'num'): geom_upper,
+            ('num', 'cat'): geom_upper,
+            ('cat', 'num'): geom_upper,
+            ('cat', 'cat'): geom_upper,
+        }
+    if not isinstance(geom_diag, dict):
+        geom_diag = {
+            'num': geom_diag,
+            'cat': geom_diag,
+        }
+
+    # Consts
+    n_cols = len(df.columns)
+    r_n = n_cols
+    c_n = n_cols
+    cols_num = set(df.select_dtypes(include=[np.number]).columns)
+
+    # Make (fig, axes)
+    fig, axes = plt.subplots(
+        r_n, c_n,
+        figsize=_figsize,
+        sharex=sharex, sharey=sharey,
+        gridspec_kw=dict(wspace=0, hspace=0),
+    )
+
+    # Mimic plotnine to make g._draw_using_figure work (at bottom)
+    fig._themeable = {}  # Mimic plotnine.ggplot._create_figure
+    axs = axes.ravel()   # Mimic plotnine.facets.facet._create_subplots
+
+    with pd.option_context('mode.chained_assignment', None):  # Mimic plotnine.ggplot.draw
+        i_cols       = list(enumerate(df.columns))
+        i_cols_pairs = itertools.product(i_cols, i_cols)
+        for ((c_i, c), (r_i, r)) in progress(list(i_cols_pairs)):
+
+            # Consts
+            ax = axes[r_i, c_i]
+            upper  = r_i <  c_i
+            lower  = r_i >  c_i
+            diag   = r_i == c_i
+            left   = c_i == 0
+            bottom = r_i == r_n - 1
+            x_t = 'num' if c in cols_num else 'cat'
+            y_t = 'num' if r in cols_num or diag else 'cat'
+            # debug_print(upper=upper, lower=lower, diag=diag, r=r, c=c, r_i=r_i, c_i=c_i, y_t=y_t, x_t=x_t, ax=ax)  # XXX
+
+            # geom
+            if upper: (mapping, geom) = (aes(x=c, y=r), (geom_upper [(x_t, y_t)] or (lambda: []))())
+            if lower: (mapping, geom) = (aes(x=c, y=r), (geom_lower [(x_t, y_t)] or (lambda: []))())
+            if diag:  (mapping, geom) = (aes(x=c),      (geom_diag  [x_t]        or (lambda: []))())
+
+            # Perf: plot nothing if no geom (e.g. geom_upper=None, the default)
+            if not geom:
+                ax.axis('off')  # Else junky default x/y axes get plotted
+            else:
+                g = ggplot(df) + mapping + geom
+
+                # labels
+                if left:   ax.set_ylabel(r)
+                if bottom: ax.set_xlabel(c)
+
+                # theme
+                g = g + _theme()
+                if bottom:     g = g + theme(axis_text_x=element_text(angle=90))
+                if not bottom: g = g + theme(axis_title_x=element_blank(), axis_text_x=element_blank(), axis_ticks_major_x=element_blank(), axis_ticks_minor_x=element_blank())
+                if not left:   g = g + theme(axis_title_y=element_blank(), axis_text_y=element_blank(), axis_ticks_major_y=element_blank(), axis_ticks_minor_y=element_blank())
+                g = g + theme(plot_background=element_rect('white'))  # Else theme_minimal/theme_void have transparent bg
+
+                # theme: panel_grid_* (grid lines)
+                if x_t == 'num': g = g + theme(panel_grid_major_x=element_blank(), panel_grid_minor_x=element_blank())
+                if y_t == 'num': g = g + theme(panel_grid_major_y=element_blank(), panel_grid_minor_y=element_blank())
+
+                # scale
+                if x_t == 'num': g = g + scale_x_continuous (expand=(0.01, 0,   0.01, 0,   ))
+                if y_t == 'num': g = g + scale_y_continuous (expand=(0,    0,   0.05, 0,   ))
+                if x_t == 'cat': g = g + scale_x_discrete   (expand=(0,    0.5, 0,    0.5, ))
+                if y_t == 'cat': g = g + scale_y_discrete   (expand=(0,    0.5, 0,    0.5, ))
+
+                # draw
+                with warnings.catch_warnings():
+                    warnings.filterwarnings('ignore',
+                        category=plotnine.exceptions.PlotnineWarning,
+                        module=re.escape('plotnine.stats.stat_bin'),
+                        message=r"'stat_bin\(\)' using 'bins = \d+'\. Pick better value with 'binwidth'\.",
+                    )
+                    g._draw_using_figure(fig, [ax])
