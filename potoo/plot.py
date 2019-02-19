@@ -933,10 +933,11 @@ def gg_pairs(
                 if y_t == 'num': g = g + theme(panel_grid_major_y=element_blank(), panel_grid_minor_y=element_blank())
 
                 # scale
-                if x_t == 'num': g = g + scale_x_continuous (expand=(0.01, 0,   0.01, 0,   ))
-                if y_t == 'num': g = g + scale_y_continuous (expand=(0,    0,   0.05, 0,   ))
-                if x_t == 'cat': g = g + scale_x_discrete   (expand=(0,    0.5, 0,    0.5, ))
-                if y_t == 'cat': g = g + scale_y_discrete   (expand=(0,    0.5, 0,    0.5, ))
+                if x_t == 'num':              g = g + scale_x_continuous (expand=(0.05, 0,   0.05, 0,   ))
+                if y_t == 'num' and not diag: g = g + scale_y_continuous (expand=(0.05, 0,   0.05, 0,   ))
+                if y_t == 'num' and diag:     g = g + scale_y_continuous (expand=(0,    0,   0.05, 0,   ))  # Suppress histo gap at y=0
+                if x_t == 'cat':              g = g + scale_x_discrete   (expand=(0,    0.5, 0,    0.5, ))
+                if y_t == 'cat':              g = g + scale_y_discrete   (expand=(0,    0.5, 0,    0.5, ))
 
                 # draw
                 with warnings.catch_warnings():
