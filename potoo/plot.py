@@ -58,6 +58,7 @@ def get_figsize_named(size_name):
 def plot_set_defaults():
     figsize()
     plot_set_default_mpl_rcParams()
+    plot_set_plotnine_defaults()
     plot_set_jupyter_defaults()
     plot_set_R_defaults()
 
@@ -206,6 +207,20 @@ def plot_set_default_mpl_rcParams():
     # mpl.rcParams['image.cmap'] = 'Greys'      # [2] black-white (nonlinear)
     # mpl.rcParams['image.cmap'] = 'gray_r'     # [1] black-white
     # TODO Sync more carefully with ~/.matploblib/matploblibrc?
+
+
+def plot_set_plotnine_defaults():
+    ignore_warning_plotnine_stat_bin_binwidth()
+
+
+def ignore_warning_plotnine_stat_bin_binwidth():
+    # Don't warn from geom_histogram/stat_bin if you use the default bins/binwidth
+    #   - Default bins is computed via freedman_diaconis_bins, which is dynamic and pretty good, so don't discourage it
+    warnings.filterwarnings('ignore',
+        category=plotnine.exceptions.PlotnineWarning,
+        module=re.escape('plotnine.stats.stat_bin'),
+        message=r"'stat_bin\(\)' using 'bins = \d+'\. Pick better value with 'binwidth'\.",
+    )
 
 
 def plot_set_jupyter_defaults():
@@ -917,9 +932,5 @@ def gg_pairs(
 
                 # draw
                 with warnings.catch_warnings():
-                    warnings.filterwarnings('ignore',
-                        category=plotnine.exceptions.PlotnineWarning,
-                        module=re.escape('plotnine.stats.stat_bin'),
-                        message=r"'stat_bin\(\)' using 'bins = \d+'\. Pick better value with 'binwidth'\.",
-                    )
+                    ignore_warning_plotnine_stat_bin_binwidth()
                     g._draw_using_figure(fig, [ax])
