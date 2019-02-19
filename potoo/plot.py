@@ -826,6 +826,7 @@ def gg_pairs(
     sharex=False,
     sharey=False,
     _theme=theme_light,
+    title=None,
     progress='tqdm',  # Uses tqdm (if installed)
     **kwargs,
 ):
@@ -870,7 +871,7 @@ def gg_pairs(
     c_n = n_cols
     cols_num = set(df.select_dtypes(include=[np.number]).columns)
 
-    # Make (fig, axes)
+    # Make fig, axes
     fig, axes = plt.subplots(
         r_n, c_n,
         figsize=_figsize,
@@ -881,6 +882,13 @@ def gg_pairs(
     # Mimic plotnine to make g._draw_using_figure work (at bottom)
     fig._themeable = {}  # Mimic plotnine.ggplot._create_figure
     axs = axes.ravel()   # Mimic plotnine.facets.facet._create_subplots
+
+    # Figure options
+    if title:
+        # plt.title(title)                         # Same as plt.gca().set_title() [I think]
+        # plt.suptitle(title)                      # Too much vertical spacing
+        # axs[(n_cols - 1) // 2].set_title(title)  # Set title on ~middle subplot column
+        axs[0].set_title(title)                    # Nah, just do it at the top left of the pyramid
 
     with pd.option_context('mode.chained_assignment', None):  # Mimic plotnine.ggplot.draw
         i_cols       = list(enumerate(df.columns))
