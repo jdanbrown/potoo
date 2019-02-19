@@ -240,10 +240,9 @@ def df_summary(
         # df.apply + or_else to handle unhashable types
         ('nunique', lambda df: df.apply(lambda c: or_else(np.nan, lambda: c.nunique()))),
         # df.apply + or_else these else they subset the cols to just the numerics, which quietly messes up col ordering
-        #   - reduce=False else all dtypes are 'object' [https://stackoverflow.com/a/34917685/397334]
         #   - dtype.base else 'category' dtypes break np.issubdtype [https://github.com/pandas-dev/pandas/issues/9581]
-        ('mean', lambda df: df.apply(reduce=False, func=lambda c: c.mean() if np.issubdtype(c.dtype.base, np.number) else np.nan)),
-        ('std',  lambda df: df.apply(reduce=False, func=lambda c: c.std()  if np.issubdtype(c.dtype.base, np.number) else np.nan)),
+        ('mean', lambda df: df.apply(func=lambda c: c.mean() if np.issubdtype(c.dtype.base, np.number) else np.nan)),
+        ('std',  lambda df: df.apply(func=lambda c: c.std()  if np.issubdtype(c.dtype.base, np.number) else np.nan)),
     ],
     # Summaries that have the same dtype as the column they summarize (e.g. quantile values)
     prototypes=[
@@ -275,10 +274,7 @@ def df_summary(
 
 def _df_quantile(df, q=.5, interpolation='linear'):
     """Like pd.DataFrame.quantile but handles ordered categoricals"""
-    return df.apply(
-        lambda c: _series_quantile(c, q=q, interpolation=interpolation),
-        reduce=False,  # Else all dtypes are 'object' [https://stackoverflow.com/a/34917685/397334]
-    )
+    return df.apply(lambda c: _series_quantile(c, q=q, interpolation=interpolation))
 
 def _series_quantile(s, *args, **kwargs):
     """Like pd.Series.quantile but handles ordered categoricals"""
