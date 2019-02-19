@@ -262,6 +262,51 @@ def _gg(df, mapping, geom, geom_kw):
     return ggplot(df) + mapping + geom(**geom_kw)
 
 
+# XXX Prefer gg_pairs
+#   - Plots numeric and non-numeric cols together
+# Plot all non-numeric cols with geom_bar
+def ggbars(df, **kwargs):
+    return (df
+        .select_dtypes(exclude=[np.number])
+        .pipe(_gg_melt_facet_wrap, geom=geom_bar, **kwargs)
+    )
+
+
+# XXX Prefer gg_pairs
+#   - Plots numeric and non-numeric cols together
+#   - Can do freedman_diaconis_bins() separately per histo, instead of only once across all histos
+# Plot all numeric cols with geom_histogram
+def gghistos(df, **kwargs):
+    kwargs.setdefault('bins', 10)  # Else one freedman_diaconis_bins() applies across all histos, which is often junky
+    return (df
+        .select_dtypes(include=[np.number])
+        .pipe(_gg_melt_facet_wrap, geom=geom_histogram, **kwargs)
+    )
+
+
+def _gg_melt_facet_wrap(
+    df,
+    geom,
+    ncol=2,
+    scales='free',
+    panel_spacing_x=.5,
+    panel_spacing_y=.5,
+    **geom_kw,
+):
+    return ggplot(df) if len(df.columns) == 0 else (df
+        .pipe(pd.melt, var_name='__variable', value_name='__value')
+        .pipe(ggplot)
+        + facet_wrap('__variable', ncol=ncol, scales=scales)
+        + aes(x='__value')
+        + theme(
+            axis_title_x=element_blank(),
+            panel_spacing_x=panel_spacing_x,
+            panel_spacing_y=panel_spacing_y,
+        )
+        + geom(**geom_kw)
+    )
+
+
 def graph(f, x: np.array) -> pd.DataFrame:
     return pd.DataFrame({
         'x': x,
