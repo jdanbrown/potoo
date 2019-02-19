@@ -226,48 +226,40 @@ def gg_to_img(g: ggplot, **kwargs) -> PIL.Image.Image:
     return plt_to_img(**kwargs)
 
 
-def ggbar(*args, **kwargs):
-    kwargs.setdefault('geom', geom_bar)
-    return gg(*args, **kwargs)
+def ggbar(df, x='x', **geom_kw):
+    return _gg(df, mapping=aes(x=x), geom=geom_bar, geom_kw=geom_kw)
 
 
-def gghist(*args, **kwargs):
-    (df, mapping, geom, kwargs) = _gg_resolve_args(*args, **kwargs)
-    kwargs.setdefault('bins', freedman_diaconis_bins(df[mapping['x']]))  # Like stat_bin
-    kwargs.setdefault('geom', geom_histogram)
-    return gg(*args, **kwargs)
+def ggbox(df, x='x', y='y', **geom_kw):
+    return _gg(df, mapping=aes(x=x, y=y), geom=geom_boxplot, geom_kw=geom_kw)
 
 
-def ggdens(*args, **kwargs):
-    kwargs.setdefault('geom', geom_density)
-    return gg(*args, **kwargs)
+def gghist(df, x='x', **geom_kw):
+    return _gg(df, mapping=aes(x=x), geom=geom_histogram, geom_kw=geom_kw)
 
 
-def ggpoint(*args, **kwargs):
-    kwargs.setdefault('geom', geom_point)
-    return gg(*args, **kwargs)
+def ggdens(df, x='x', **geom_kw):
+    return _gg(df, mapping=aes(x=x), geom=geom_density, geom_kw=geom_kw)
 
 
-def ggline(*args, **kwargs):
-    kwargs.setdefault('geom', geom_line)
-    return gg(*args, **kwargs)
+def ggpoint(df, x='x', y='y', **geom_kw):
+    return _gg(df, mapping=aes(x=x, y=y), geom=geom_point, geom_kw=geom_kw)
 
 
-def gg(*args, **kwargs):
-    (df, mapping, geom, kwargs) = _gg_resolve_args(*args, **kwargs)
-    return ggplot(df, mapping) + geom(**kwargs)
+def ggline(df, x='x', y='y', **geom_kw):
+    return _gg(df, mapping=aes(x=x, y=y), geom=geom_line, geom_kw=geom_kw)
 
 
-def _gg_resolve_args(df_or_series, x: str = None, y: str = None, mapping=None, geom=None, **kwargs):
-    mapping = mapping or aes()
-    if isinstance(df_or_series, pd.Series):
-        df = pd.DataFrame({'x': df_or_series})
-        x = 'x'
-    elif isinstance(df_or_series, pd.DataFrame):
-        df = df_or_series
-    if x: mapping.setdefault('x', x)
-    if y: mapping.setdefault('y', y)
-    return (df, mapping, geom, kwargs)
+def _gg(df, mapping, geom, geom_kw):
+    if isinstance(df, np.ndarray):
+        df = pd.Series(df)
+    if isinstance(df, pd.Series):
+        k = df.name or 'x'
+        df = pd.DataFrame({k: df})
+        mapping['x'] = k
+    if callable(geom_kw):
+        geom_kw = geom_kw(df, mapping)
+    return ggplot(df) + mapping + geom(**geom_kw)
 
 
 def graph(f, x: np.array) -> pd.DataFrame:
