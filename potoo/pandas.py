@@ -227,8 +227,10 @@ def df_flatmap(df: pd.DataFrame, f: Callable[['Row'], Union[pd.DataFrame, Iterab
 
 
 def df_summary(
-    # A df, or a series that will be coerced into a 1-col df
-    df: Union[pd.DataFrame, pd.Series],
+    df: Union[pd.DataFrame, pd.Series], # A df, or a series that will be coerced into a 1-col df
+    n=10,                               # Show first n rows of df (0 for none, None for all)
+    k=10,                               # Show random k rows of df (0 for none, None for all)
+    random_state=None,                  # For df.sample
     # Summaries that might have a different dtype than the column they summarize (e.g. count, mean)
     stats=[
         # Use dtype.name (str) instead of dtype (complicated object that causes trouble)
@@ -236,7 +238,8 @@ def df_summary(
         # ('sizeof', lambda df: _sizeof_df_cols(df).map(partial(humanize.naturalsize, binary=True))),
         ('sizeof', lambda df: _sizeof_df_cols(df)),
         ('len', lambda df: len(df)),
-        'count',
+        # 'count',  # Prefer isnull (= len - count)
+        ('isnull', lambda df: df.isnull().sum()),
         # df.apply + or_else to handle unhashable types
         ('nunique', lambda df: df.apply(lambda c: or_else(np.nan, lambda: c.nunique()))),
         # df.apply + or_else these else they subset the cols to just the numerics, which quietly messes up col ordering
@@ -246,7 +249,7 @@ def df_summary(
     ],
     # Summaries that have the same dtype as the column they summarize (e.g. quantile values)
     prototypes=[
-        ('min', lambda df: _df_quantile(df, .0,  interpolation='lower')),
+        ('min', lambda df: _df_quantile(df, 0,   interpolation='lower')),
         ('25%', lambda df: _df_quantile(df, .25, interpolation='lower')),
         ('50%', lambda df: _df_quantile(df, .5,  interpolation='lower')),
         ('75%', lambda df: _df_quantile(df, .75, interpolation='lower')),
@@ -254,21 +257,43 @@ def df_summary(
     ],
 ):
     """A more flexible version of df.describe, with more information by default"""
+
+    # Coerce series to df
     if isinstance(df, pd.Series):
         df = pd.DataFrame(df)
-    try:
-        df = df.reset_index()  # Surface indexes as cols in stats
-    except:
-        # Oops, index is already a col [`drop=df.index.name in df.columns` is unreliable b/c df.index.names ...]
-        df = df.reset_index(drop=True)
-    stats = [(f, lambda df, f=f: getattr(df, f)()) if isinstance(f, str) else f for f in stats]
+
+    # Surface non-default indexes as cols in stats
+    if not df.index.identical(pd.RangeIndex(len(df))):
+        try:
+            df = df.reset_index()  # Surface indexes as cols in stats
+        except:
+            # Oops, index is already a col [`drop=df.index.name in df.columns` is unreliable b/c df.index.names ...]
+            df = df.reset_index(drop=True)
+
+    stats      = [(f, lambda df, f=f: getattr(df, f)()) if isinstance(f, str) else f for f in stats]
     prototypes = [(f, lambda df, f=f: getattr(df, f)()) if isinstance(f, str) else f for f in prototypes]
     return (
-        pd.DataFrame(OrderedDict({k: f(df) for k, f in stats + prototypes})).T
+        # Make a df from: stats + prototypes + first n rows + random k rows
+        pd.concat([
+            pd.DataFrame(OrderedDict({k: f(df) for k, f in stats + prototypes})).T,
+            df[:n],
+            df[n:].sample(
+                n=min(k, len(df[n:])),
+                replace=False,
+                random_state=random_state,
+            ).sort_index(),
+        ])
         # Reorder cols to match input (some aggs like mean/std throw out non-numeric cols, which messes up order)
         [df.columns]
         # Pull stats up into col index, so that our col dtypes can match the input col dtypes
-        .T.set_index([k for k, f in stats], append=True).T
+        #   - [Added later] Also prototypes, to separate from df[:n] rows
+        #   - FIXME dtypes get mixed up (e.g. False/0) in the transpose
+        #       - WARNING Seems deeply rooted -- coercing each index value wasn't sufficient to fix, via:
+        #           MultiIndex.map(lambda (k, *xs): (k, *tuple(df[k].dtype.type(x) for x in xs)))
+        .T.set_index([k for k, f in stats + prototypes], append=True).T
+        # Transpose for fixed width (stats) and variable height (input cols)
+        #   - [Nope: transposing cols mixes dtypes such that mixed str/int/float undermines display.precision smarts]
+        # .T
     )
 
 
