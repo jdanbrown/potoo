@@ -245,6 +245,10 @@ def ggbar(df, x='x', **geom_kw):
     return _gg(df, mapping=aes(x=x), geom=geom_bar, geom_kw=geom_kw)
 
 
+def ggcol(df, x='x', y='y', **geom_kw):
+    return _gg(df, mapping=aes(x=x, y=y), geom=geom_col, geom_kw=geom_kw)
+
+
 def ggbox(df, x='x', y='y', **geom_kw):
     return _gg(df, mapping=aes(x=x, y=y), geom=geom_boxplot, geom_kw=geom_kw)
 
