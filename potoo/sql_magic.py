@@ -3,7 +3,6 @@ import inspect
 import os
 import time
 
-import datalab.bigquery as bq
 from IPython.core.magic import Magics, line_cell_magic, magics_class
 from IPython.core.magic_arguments import argument, magic_arguments, parse_argstring
 import pandas as pd
@@ -43,37 +42,64 @@ class SQLAMagics(SQLMagics):
 
     @line_cell_magic
     @magic_arguments()
+    @argument('-c', '--conn', required=True, help='sqlalchemy connection/session to use (env_var | db_url | eng)')
     @argument('-o', '--out', help='Variable name to store the output in')
     @argument('-r', '--no-return', action='store_true', help="Don't return result as cell output (useful with -o)")
     @argument('-T', '--transpose', action='store_true', help='Transpose the output df (return df.T instead of df)')
     @argument('-q', '--quiet', action='store_true', help='Suppress output to stdout')
-    @argument('-c', '--conn', help='sqlalchemy connection/session to use')
+    @argument('-p', '--precision', default=0, type=int, help='Precision for query runtime')
+    @argument('-I', '--with-sql', help='Function to transform input sql (f: str -> str)')
+    @argument('-O', '--with-results', help='Function to transform output results (f: df -> df)')
     @argument('rest', nargs=argparse.REMAINDER)
     def sqla(self, line, cell=None) -> pd.DataFrame:
 
         # Parse input
         args = parse_argstring(self.sqla, line)
 
-        # Parse code
-        code = ' '.join(args.rest + [cell or ''])
+        # Parse sql
+        sql = ' '.join(args.rest + [cell or ''])
 
         # Get db session
         db_conn = args.conn or self.conn
         if db_conn in self.shell.user_ns:
-            db_session = self.shell.user_ns.get(db_conn)
+            # Read `-c var` from caller env
+            db_conn = self.shell.user_ns.get(db_conn)
+        if isinstance(db_conn, str) and db_conn in os.environ:
+            # Read `-c DB_URL` from env
+            db_conn = os.environ[db_conn]
+        if isinstance(db_conn, str):
+            # Treat `-c str` as db_url
+            db_url = db_conn
+            db_session = sqla_session(db_url)
+        elif isinstance(db_conn, sqla.engine.base.Engine):
+            # Treat `-c eng` as sqla Engine
+            db_eng = db_conn
+            db_session = sqla_session(db_eng)
         else:
-            db_session = sqla_session(os.environ[db_conn])
+            assert False, '-c is required'
         db_desc = repr(db_session.session_factory.kw['bind'].url)  # repr masks the password, str doesn't
+
+        # Transform sql (maybe)
+        if args.with_sql:
+            with_sql = self.shell.user_ns.get(args.with_sql) or eval(args.with_sql)  # HACK
+            if with_sql:
+                sql = with_sql(sql)
 
         # Run query
         self._print(args.quiet, 'Running query...')
         start_s = time.time()
         df = pd.read_sql(
-            sql=sqla.text(code),
+            sql=sqla.text(sql),
             con=db_session.bind,
             coerce_float=True,  # True is default -- is this sane?
         )
-        self._print(args.quiet, '[%.0fs, %s]' % (time.time() - start_s, db_desc))
+        self._print(args.quiet, f'[%.{args.precision}fs, %s]' % (time.time() - start_s, db_desc))
+
+        # Transform results (maybe)
+        if args.with_results:
+            with_results = self.shell.user_ns.get(args.with_results) or eval(args.with_results)  # HACK
+            if with_results:
+                df = with_results(df)
 
         # Store output
         if args.out:
@@ -124,6 +150,9 @@ class BQMagics(SQLMagics):
     @argument('rest', nargs=argparse.REMAINDER)
     def bq(self, line, cell=None) -> pd.DataFrame:
 
+        # Lazy import (in case it's not installed)
+        import datalab.bigquery as bq
+
         # Parse args
         args = parse_argstring(self.bq, line)
         args_dict = dict(args._get_kwargs())
@@ -163,7 +192,7 @@ class BQMagics(SQLMagics):
             return df.T if args.transpose else df
 
 
-def bq_url_for_query(query: bq.QueryJob) -> str:
+def bq_url_for_query(query: 'bq.QueryJob') -> str:
     return 'https://bigquery.cloud.google.com/results/%s:%s' % (query.results.name.project_id, query.results.job_id)
 
 
