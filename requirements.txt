@@ -16,3 +16,6 @@ sqlalchemy>=1.2.0
 # For pandas.io.gbq / potoo.pandas_io_gbq_par_io
 google-api-python-client>=1.5.5
 oauth2client>=3.0.0
+
+# For %load_ext rpy2.ipython
+simplegeneric==0.8.1
