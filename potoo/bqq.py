@@ -8,11 +8,12 @@ import datalab
 import datalab.bigquery as bq
 import datalab.storage as gs
 from datalab.bigquery._utils import TableName
+import humanize
 import pandas as pd
 
 
 def bq_url_for_query(query: bq.QueryJob) -> str:
-    return 'https://bigquery.cloud.google.com/results/%s:%s' % (query.results.name.project_id, query.results.job_id)
+    return 'https://console.cloud.google.com/bigquery?project=%s&j=bq:US:%s&page=queryresults' % (query.results.name.project_id, query.results.job_id)
 
 
 # TODO Unify with potoo.sql_magics.BQMagics.bq (%bq)
@@ -27,7 +28,16 @@ def bqq(sql: str, max_rows=1000, **kwargs) -> pd.DataFrame:
     print('Running query...')
     start_s = time.time()
     query = bq.Query(sql).execute(dialect='standard', **kwargs)
-    print('[%.0fs, %s]' % (time.time() - start_s, bq_url_for_query(query)))
+    job = query.results.job
+    print('[%.0fs] cost[%s] rows[%s] url[%s]' % (
+        time.time() - start_s,  # Also job.total_time, but prefer user wall clock
+        'cached' if job.cache_hit else '$%.4f, %s' % (
+            job.bytes_processed / 1024**4 * 5,  # Cost estimate: $5/TB
+            humanize.naturalsize(job.bytes_processed),
+        ),
+        job.total_rows,
+        bq_url_for_query(query),
+    ))
 
     print('Fetching results...')
     start_s = time.time()
