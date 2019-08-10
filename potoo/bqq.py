@@ -17,7 +17,7 @@ def bq_url_for_query(query: bq.QueryJob) -> str:
 
 
 # TODO Unify with potoo.sql_magics.BQMagics.bq (%bq)
-def bqq(sql: str, max_rows=1000, defs=None, **kwargs) -> pd.DataFrame:
+def bqq(sql: str, max_rows=1000, defs=None, show_query=False, **kwargs) -> pd.DataFrame:
     """
     e.g. bqq('select 42')
     """
@@ -26,7 +26,10 @@ def bqq(sql: str, max_rows=1000, defs=None, **kwargs) -> pd.DataFrame:
     sql = sql.replace('$', '$$')  # Make '$' safe by assuming no variable references (see bq.Query? for details)
     if defs: sql = defs + sql  # Prepend defs, if given
 
-    print('Running query...')
+    if not show_query:
+        print('Running query...')
+    else:
+        print('Running query[%s]...' % sql)
     start_s = time.time()
     query = bq.Query(sql).execute(dialect='standard', **kwargs)
     job = query.results.job
