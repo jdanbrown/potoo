@@ -17,13 +17,14 @@ def bq_url_for_query(query: bq.QueryJob) -> str:
 
 
 # TODO Unify with potoo.sql_magics.BQMagics.bq (%bq)
-def bqq(sql: str, max_rows=1000, **kwargs) -> pd.DataFrame:
+def bqq(sql: str, max_rows=1000, defs=None, **kwargs) -> pd.DataFrame:
     """
     e.g. bqq('select 42')
     """
 
     kwargs.setdefault('billing_tier', 3)
     sql = sql.replace('$', '$$')  # Make '$' safe by assuming no variable references (see bq.Query? for details)
+    if defs: sql = defs + sql  # Prepend defs, if given
 
     print('Running query...')
     start_s = time.time()
