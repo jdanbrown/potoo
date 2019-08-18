@@ -11,6 +11,8 @@ from datalab.bigquery._utils import TableName
 import humanize
 import pandas as pd
 
+from potoo import humanize
+
 
 def bq_url_for_query(query: bq.QueryJob) -> str:
     return 'https://console.cloud.google.com/bigquery?project=%s&j=bq:US:%s&page=queryresults' % (query.results.name.project_id, query.results.job_id)
@@ -33,13 +35,15 @@ def bqq(sql: str, max_rows=1000, defs=None, show_query=False, **kwargs) -> pd.Da
     start_s = time.time()
     query = bq.Query(sql).execute(dialect='standard', **kwargs)
     job = query.results.job
-    print('[%.0fs] cost[%s] rows[%s] url[%s]' % (
+    metadata = query.results.metadata
+    print('[%.0fs] cost[%s] rows[%s] size[%s] url[%s]' % (
         time.time() - start_s,  # Also job.total_time, but prefer user wall clock
         'cached' if job.cache_hit else '$%.4f, %s' % (
             job.bytes_processed / 1024**4 * 5,  # Cost estimate: $5/TB
             humanize.naturalsize(job.bytes_processed),
         ),
         job.total_rows,
+        humanize.naturalsize(metadata.size),
         bq_url_for_query(query),
     ))
 
