@@ -86,15 +86,16 @@ def bqq(
         basename = '%s' % re.sub(r'[^0-9T]', '-', datetime.utcnow().isoformat())
         path = '%s/%s.%s' % (extract_dir, basename, ext)
         gs_uri = 'gs://%s/%s' % (extract_bucket, path)
+        # TODO Report time for extract (like we already do for query and fetch)
         print('Extracting results to uri[%s]...' % gs_uri)
         gs.Bucket(extract_bucket).create()
         extract_job = query.results.extract(destination=gs_uri,
             format='csv', compress=True,
         )
-        if not extract_job:
-            # TODO Does .extract ever return None on failure, or will it always throw on failure?
-            #   - https://googledatalab.github.io/pydatalab/datalab.bigquery.html#datalab.bigquery.Query.extract
-            raise Exception('Extract failed: extract_job[%s]' % extract_job)
+        # Raise if extract failed by triggering .result()
+        #   - e.g. results >1gb fail [FIXME Requires wildcards: https://cloud.google.com/bigquery/docs/exporting-data]
+        #   - extract_job (=None) isn't informative when extract succeeds
+        extract_job.result()
         if extract_infer_schema:
             print('Peeking .to_dataframe(max_rows=1000) to infer schema for .extract() (disable with extract_infer_schema=False)...')
             _df = query.results.to_dataframe(max_rows=1000)
