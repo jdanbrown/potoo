@@ -1,5 +1,6 @@
 # TODO Throw away potoo.bq and rename this to replace it (potoo.bqq -> potoo.bq)
 
+from datetime import datetime
 import re
 import textwrap
 import time
@@ -8,8 +9,10 @@ import datalab
 import datalab.bigquery as bq
 import datalab.storage as gs
 from datalab.bigquery._utils import TableName
+import gcsfs  # XXX Replace with pd.read_json in pandas 0.24.x [https://stackoverflow.com/a/50201179/397334]
 import humanize
 import pandas as pd
+import pandavro
 
 from potoo import humanize
 
@@ -19,7 +22,19 @@ def bq_url_for_query(query: bq.QueryJob) -> str:
 
 
 # TODO Unify with potoo.sql_magics.BQMagics.bq (%bq)
-def bqq(sql: str, max_rows=1000, defs=None, show_query=False, **kwargs) -> pd.DataFrame:
+def bqq(
+    sql: str,
+    max_rows=1000,
+    defs=None,
+    show_query=False,
+    via_extract='infer',  # Use .extract (good for big results) i/o .to_dataframe (good for small results)
+    extract_infer_schema=True,  # HACK Very brittle but usually what you want
+    extract_infer_threshold_mb=100,
+    # TODO Take this as one gs:// uri instead of two separate str args
+    extract_bucket='potoo-bqq-extract',
+    extract_dir='v0',
+    **kwargs,
+) -> pd.DataFrame:
     """
     e.g. bqq('select 42')
     """
@@ -43,13 +58,56 @@ def bqq(sql: str, max_rows=1000, defs=None, show_query=False, **kwargs) -> pd.Da
             humanize.naturalsize(job.bytes_processed),
         ),
         job.total_rows,
-        humanize.naturalsize(metadata.size),
+        humanize.naturalsize(metadata.size, binary=True),
         bq_url_for_query(query),
     ))
 
-    print('Fetching results...')
+    # Use .extract
+    if via_extract == 'infer':
+        if metadata.size >= extract_infer_threshold_mb * 1024**2:
+            print('Using .extract i/o .to_dataframe, because size[%s] ≥ extract_infer_threshold_mb[%s]' % (
+                humanize.naturalsize(metadata.size, binary=True),
+                extract_infer_threshold_mb,
+            ))
+            via_extract = True
+        else:
+            via_extract = False
+
     start_s = time.time()
-    df = query.results.to_dataframe(max_rows=max_rows)
+    if not via_extract:
+        print('Fetching results...')
+        df = query.results.to_dataframe(max_rows=max_rows)
+    else:
+        # We use format='csv' with extract() b/c it works better than format='json' or format='avro' (surprisingly!)
+        #   - json: some cols go missing (wat), col order not preserved
+        #   - avro: injects its own tz datatype into pd.Timestamp, which I didn't try to undo
+        #       - Requires additional reqs: fastavro==0.22.3 pandavro==1.4.0
+        ext = 'csv.gz'
+        basename = '%s' % re.sub(r'[^0-9T]', '-', datetime.utcnow().isoformat())
+        path = '%s/%s.%s' % (extract_dir, basename, ext)
+        gs_uri = 'gs://%s/%s' % (extract_bucket, path)
+        print('Extracting results to uri[%s]...' % gs_uri)
+        gs.Bucket(extract_bucket).create()
+        extract_job = query.results.extract(destination=gs_uri,
+            format='csv', compress=True,
+        )
+        if not extract_job:
+            # TODO Does .extract ever return None on failure, or will it always throw on failure?
+            #   - https://googledatalab.github.io/pydatalab/datalab.bigquery.html#datalab.bigquery.Query.extract
+            raise Exception('Extract failed: extract_job[%s]' % extract_job)
+        if extract_infer_schema:
+            print('Peeking .to_dataframe(max_rows=1000) to infer schema for .extract() (disable with extract_infer_schema=False)...')
+            _df = query.results.to_dataframe(max_rows=1000)
+        print('Fetching results from uri[%s]...' % gs_uri)
+        fs = gcsfs.GCSFileSystem()
+        fs.invalidate_cache()  # HACK Work around https://github.com/dask/gcsfs/issues/5 (spurious FileNotFoundError's)
+        with fs.open(gs_uri) as f:
+            df = (
+                pd.read_csv(f, compression='gzip')
+                .pipe(lambda df: df if not extract_infer_schema else df
+                    .astype(_df.dtypes.to_dict())
+                )
+            )
     print('[%.0fs]' % (time.time() - start_s))
 
     return df
