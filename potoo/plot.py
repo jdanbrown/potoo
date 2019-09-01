@@ -235,6 +235,11 @@ def plot_set_jupyter_defaults():
 #
 
 
+# HACK Add white bg to theme_minimal/theme_void, which by default have transparent bg
+theme_minimal = lambda **kwargs: plotnine.theme_minimal (**kwargs) + theme(plot_background=element_rect('white'))
+theme_void    = lambda **kwargs: plotnine.theme_void    (**kwargs) + theme(plot_background=element_rect('white'))
+
+
 def gg_to_img(g: ggplot, **kwargs) -> PIL.Image.Image:
     """Render a ggplot as an image"""
     g.draw()
