@@ -4,6 +4,7 @@ from datetime import datetime
 import re
 import textwrap
 import time
+from typing import Mapping, Optional, Tuple, Union
 
 import datalab
 import datalab.bigquery as bq
@@ -12,7 +13,6 @@ from datalab.bigquery._utils import TableName
 import gcsfs  # XXX Replace with pd.read_json in pandas 0.24.x [https://stackoverflow.com/a/50201179/397334]
 import humanize
 import pandas as pd
-import pandavro
 
 from potoo import humanize
 
@@ -23,7 +23,8 @@ def bq_url_for_query(query: bq.QueryJob) -> str:
 
 # TODO Unify with potoo.sql_magics.BQMagics.bq (%bq)
 def bqq(
-    sql: str,
+    query: Optional[str] = None,
+    sql: Optional[str] = None,  # TODO Standardize on 'query' i/o 'sql' everywhere (e.g. spark() takes a query, not sql)
     max_rows=1000,
     defs=None,
     show_query=False,
@@ -31,8 +32,8 @@ def bqq(
     extract_infer_schema=True,  # HACK Very brittle but usually what you want
     extract_infer_threshold_mb=100,
     # TODO Take this as one gs:// uri instead of two separate str args
-    extract_bucket='potoo-bqq-extract',
-    extract_dir='v0',
+    extract_bucket='potoo-bqq',
+    extract_dir='extract/v0',
     **kwargs,
 ) -> pd.DataFrame:
     """
@@ -40,6 +41,7 @@ def bqq(
     """
 
     kwargs.setdefault('billing_tier', 3)
+    sql = query if query is not None else sql  # Back compat
     sql = sql.replace('$', '$$')  # Make '$' safe by assuming no variable references (see bq.Query? for details)
     if defs: sql = defs + sql  # Prepend defs, if given
 
@@ -102,7 +104,7 @@ def bqq(
         print('Fetching results from uri[%s]...' % gs_uri)
         fs = gcsfs.GCSFileSystem()
         fs.invalidate_cache()  # HACK Work around https://github.com/dask/gcsfs/issues/5 (spurious FileNotFoundError's)
-        with fs.open(gs_uri) as f:
+        with fs.open(gs_uri, 'rb') as f:
             df = (
                 pd.read_csv(f, compression='gzip')
                 .pipe(lambda df: df if not extract_infer_schema else df
@@ -142,6 +144,81 @@ def bqq_from_job_id(
     # Have to re-run query since tmp tables that hold job results aren't shared to other users
     #   - e.g. if you open someone else's bq job url in the web ui, you see no results and have to click "Run Query"
     return bqq(sql, **kwargs)
+
+
+def df_to_bq(
+    df: pd.DataFrame,
+    table: Union[str, Tuple[str, str, str]],  # 'dataset.table' | 'project:dataset.table' | (project, dataset, table)
+    schema: Mapping[str, str] = None,  # https://cloud.google.com/bigquery/docs/reference/rest/v2/tables#TableFieldSchema
+    table_kwargs=None,
+    overwrite=False,
+    create_kwargs=None,
+    load_bucket='potoo-bqq',
+    load_dir='load/v0',
+    load_kwargs=None,
+):
+    start_s = time.time()
+
+    # Infer schema, if not given
+    if schema is None:
+        dtypes = dict(df.dtypes)
+        schema = {
+            k: {
+                'object': 'string',
+                # TODO Add mappings for more types other than string
+            }.get(v.name, 'string')
+            for k, v in dtypes.items()
+        }
+        print('Inferred schema[%(schema)s] from dtypes[%(dtypes)s]' % locals())
+
+    # Create table
+    print('Creating table[%(table)s] with schema[%(schema)s]...' % locals())
+    _table = bq.Table(**{
+        'name': table,
+        **(table_kwargs or {}),
+    })
+    _table.create(**{
+        'schema': [dict(name=k, type=v) for k, v in schema.items()],
+        'overwrite': overwrite,
+        **(create_kwargs or {}),
+    })
+
+    # Upload df -> gs
+    basename = re.sub(r'[^0-9T]', '-', datetime.utcnow().isoformat())
+    gs_uri = 'gs://%(load_bucket)s/%(load_dir)s/%(basename)s.csv' % locals()
+    print('Uploading df to gs[%(gs_uri)s]...' % locals())
+    gs.Bucket(load_bucket).create()
+    fs = gcsfs.GCSFileSystem()
+    fs.invalidate_cache()  # HACK Work around https://github.com/dask/gcsfs/issues/5 (spurious FileNotFoundError's)
+    with fs.open(gs_uri, 'wt') as f:
+        df.to_csv(f,
+            index=False,
+            # TODO Think about date formats, etc.
+            #   - https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.DataFrame.to_csv.html
+            # FIXME Ignored when f is a file i/o a path
+            #   - https://github.com/pandas-dev/pandas/issues/22555
+            # compression='gzip',
+        )
+
+    # Load table <- gs
+    print('Loading table[%(table)s] from gs[%(gs_uri)s]...' % locals())
+    job = _table.load(**{
+        'source': gs_uri,
+        'mode': 'append',  # Assume table is empty, since we just created it above
+        'source_format': 'csv',
+        'csv_options': bq.CSVOptions(
+            skip_leading_rows=1,  # Ignore header row
+        ),
+        **(load_kwargs or {}),
+    })
+    job.result()  # Throw if failed
+
+    # Print stats
+    print('[%.0fs] rows[%s] size[%s]' % (
+        time.time() - start_s,
+        _table.metadata.rows,
+        humanize.naturalsize(_table.metadata.size, binary=True),
+    ))
 
 
 def bqi():
