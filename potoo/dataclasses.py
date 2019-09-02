@@ -12,6 +12,10 @@ class DataclassUtil:
     """Things I wish all dataclasses had"""
 
     @classmethod
+    def fields(cls) -> Iterable[dataclasses.Field]:
+        return dataclasses.fields(cls)
+
+    @classmethod
     def field_names(cls, **filters) -> Iterable[str]:
         return [
             x.name
