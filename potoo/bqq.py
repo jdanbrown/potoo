@@ -1,6 +1,7 @@
 # TODO Throw away potoo.bq and rename this to replace it (potoo.bqq -> potoo.bq)
 
 from datetime import datetime
+import logging
 import re
 import textwrap
 import time
@@ -15,6 +16,8 @@ import humanize
 import pandas as pd
 
 from potoo import humanize
+
+log = logging.getLogger(__name__)
 
 
 def bq_url_for_query(query: bq.QueryJob) -> str:
@@ -46,14 +49,14 @@ def bqq(
     if defs: sql = defs + sql  # Prepend defs, if given
 
     if not show_query:
-        print('Running query...')
+        log.info('Running query...')
     else:
-        print('Running query[%s]...' % sql)
+        log.info('Running query[%s]...' % sql)
     start_s = time.time()
     query = bq.Query(sql).execute(dialect='standard', **kwargs)
     job = query.results.job
     metadata = query.results.metadata
-    print('[%.0fs] cost[%s] rows[%s] size[%s] url[%s]' % (
+    log.info('[%.0fs] cost[%s] rows[%s] size[%s] url[%s]' % (
         time.time() - start_s,  # Also job.total_time, but prefer user wall clock
         'cached' if job.cache_hit else '$%.4f, %s' % (
             job.bytes_processed / 1024**4 * 5,  # Cost estimate: $5/TB
@@ -67,7 +70,7 @@ def bqq(
     # Use .extract
     if via_extract == 'infer':
         if metadata.size >= extract_infer_threshold_mb * 1024**2:
-            print('Using .extract i/o .to_dataframe, because size[%s] ≥ extract_infer_threshold_mb[%s]' % (
+            log.info('Using .extract i/o .to_dataframe, because size[%s] ≥ extract_infer_threshold_mb[%s]' % (
                 humanize.naturalsize(metadata.size, binary=True),
                 extract_infer_threshold_mb,
             ))
@@ -77,7 +80,7 @@ def bqq(
 
     start_s = time.time()
     if not via_extract:
-        print('Fetching results...')
+        log.info('Fetching results...')
         df = query.results.to_dataframe(max_rows=max_rows)
     else:
         # We use format='csv' with extract() b/c it works better than format='json' or format='avro' (surprisingly!)
@@ -89,7 +92,7 @@ def bqq(
         path = '%s/%s.%s' % (extract_dir, basename, ext)
         gs_uri = 'gs://%s/%s' % (extract_bucket, path)
         # TODO Report time for extract (like we already do for query and fetch)
-        print('Extracting results to uri[%s]...' % gs_uri)
+        log.info('Extracting results to uri[%s]...' % gs_uri)
         gs.Bucket(extract_bucket).create()
         extract_job = query.results.extract(destination=gs_uri,
             format='csv', compress=True,
@@ -99,9 +102,9 @@ def bqq(
         #   - extract_job (=None) isn't informative when extract succeeds
         extract_job.result()
         if extract_infer_schema:
-            print('Peeking .to_dataframe(max_rows=1000) to infer schema for .extract() (disable with extract_infer_schema=False)...')
+            log.info('Peeking .to_dataframe(max_rows=1000) to infer schema for .extract() (disable with extract_infer_schema=False)...')
             _df = query.results.to_dataframe(max_rows=1000)
-        print('Fetching results from uri[%s]...' % gs_uri)
+        log.info('Fetching results from uri[%s]...' % gs_uri)
         fs = gcsfs.GCSFileSystem()
         fs.invalidate_cache()  # HACK Work around https://github.com/dask/gcsfs/issues/5 (spurious FileNotFoundError's)
         with fs.open(gs_uri, 'rb') as f:
@@ -111,7 +114,7 @@ def bqq(
                     .astype(_df.dtypes.to_dict())
                 )
             )
-    print('[%.0fs]' % (time.time() - start_s))
+    log.info('[%.0fs]' % (time.time() - start_s))
 
     return df
 
@@ -140,7 +143,7 @@ def bqq_from_job_id(
     job = bq.Job(job_id, context)
     job_data = job._api.jobs_get(job.id)
     sql = job_data['configuration']['query']['query']
-    print(f'Running job_id[{job_id}] with sql[\n{textwrap.indent(sql, prefix="  ")}\n]...')
+    log.info(f'Running job_id[{job_id}] with sql[\n{textwrap.indent(sql, prefix="  ")}\n]...')
     # Have to re-run query since tmp tables that hold job results aren't shared to other users
     #   - e.g. if you open someone else's bq job url in the web ui, you see no results and have to click "Run Query"
     return bqq(sql, **kwargs)
@@ -169,10 +172,10 @@ def df_to_bq(
             }.get(v.name, 'string')
             for k, v in dtypes.items()
         }
-        print('Inferred schema[%(schema)s] from dtypes[%(dtypes)s]' % locals())
+        log.info('Inferred schema[%(schema)s] from dtypes[%(dtypes)s]' % locals())
 
     # Create table
-    print('Creating table[%(table)s] with schema[%(schema)s]...' % locals())
+    log.info('Creating table[%(table)s] with schema[%(schema)s]...' % locals())
     _table = bq.Table(**{
         'name': table,
         **(table_kwargs or {}),
@@ -186,7 +189,7 @@ def df_to_bq(
     # Upload df -> gs
     basename = re.sub(r'[^0-9T]', '-', datetime.utcnow().isoformat())
     gs_uri = 'gs://%(load_bucket)s/%(load_dir)s/%(basename)s.csv' % locals()
-    print('Uploading df to gs[%(gs_uri)s]...' % locals())
+    log.info('Uploading df to gs[%(gs_uri)s]...' % locals())
     gs.Bucket(load_bucket).create()
     fs = gcsfs.GCSFileSystem()
     fs.invalidate_cache()  # HACK Work around https://github.com/dask/gcsfs/issues/5 (spurious FileNotFoundError's)
@@ -201,7 +204,7 @@ def df_to_bq(
         )
 
     # Load table <- gs
-    print('Loading table[%(table)s] from gs[%(gs_uri)s]...' % locals())
+    log.info('Loading table[%(table)s] from gs[%(gs_uri)s]...' % locals())
     job = _table.load(**{
         'source': gs_uri,
         'mode': 'append',  # Assume table is empty, since we just created it above
@@ -214,7 +217,7 @@ def df_to_bq(
     job.result()  # Throw if failed
 
     # Print stats
-    print('[%.0fs] rows[%s] size[%s]' % (
+    log.info('[%.0fs] rows[%s] size[%s]' % (
         time.time() - start_s,
         _table.metadata.rows,
         humanize.naturalsize(_table.metadata.size, binary=True),
