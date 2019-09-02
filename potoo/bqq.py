@@ -1,11 +1,14 @@
 # TODO Throw away potoo.bq and rename this to replace it (potoo.bqq -> potoo.bq)
 
+import dataclasses
+from dataclasses import dataclass, field
 from datetime import datetime
 import logging
+import random
 import re
 import textwrap
 import time
-from typing import Mapping, Optional, Tuple, Union
+from typing import List, Mapping, Optional, Tuple, Union
 
 import datalab
 import datalab.bigquery as bq
@@ -13,21 +16,219 @@ import datalab.storage as gs
 from datalab.bigquery._utils import TableName
 import gcsfs  # XXX Replace with pd.read_json in pandas 0.24.x [https://stackoverflow.com/a/50201179/397334]
 import humanize
+from more_itertools import intersperse
 import pandas as pd
 
 from potoo import humanize
+from potoo.dataclasses import *
+from potoo.util import puts
 
 log = logging.getLogger(__name__)
+
+
+# TODO Re-home?
+def lines(*xs):
+    return '\n'.join(x for x in xs if x is not None)
+def indent_lines(*xs):
+    return indent(lines(*xs))
+def indent(s, width=4):
+    return textwrap.indent(s, prefix=' ' * width)
+def strip_margin(s):
+    return textwrap.dedent(s).strip()
+def fold_whitespace(s):
+    return re.sub(r'\s+', ' ', s)
+def strip_trailing_comma(s):
+    return re.sub(r',(\s*)$', r'\1', s)
 
 
 def bq_url_for_query(query: bq.QueryJob) -> str:
     return 'https://console.cloud.google.com/bigquery?project=%s&j=bq:US:%s&page=queryresults' % (query.results.name.project_id, query.results.job_id)
 
 
+@dataclass
+class BQQ(DataclassUtil, DataclassAsDict):
+
+    # Global fields
+    defs:         Optional[str] = field(default=None, metadata={'bqq.global': True})
+    fresh_prefix: str           = field(default='_',  metadata={'bqq.global': True})
+    fresh_len:    int           = field(default=4,    metadata={'bqq.global': True})
+
+    # Local fields
+    clauses: Mapping[str, any] = field(default_factory=lambda: {})
+
+    def __repr__(self):
+        return lines(
+            f"{type(self).__name__}(",
+            indent_lines(
+                f"fresh_prefix={self.fresh_prefix!r},",
+                f"fresh_len={self.fresh_len!r},",
+                f"defs={self.defs!r}," if not self.defs else lines(
+                    f"defs='''",
+                    indent_lines(strip_margin(self.defs)) or None,
+                    "''',",
+                ),
+                f"sql={self.sql!r}," if not self.sql else lines(
+                    f"sql='''",
+                    indent_lines(strip_margin(self.sql)) or None,
+                    "''',",
+                ),
+            ),
+            ')',
+        )
+
+    # Simple api
+
+    def __call__(self, query: str, **kwargs) -> pd.DataFrame:
+        """Run given query (ignoring .sql), returning a pandas df"""
+        return _bqq(query, **{
+            'defs': strip_margin(self.defs),
+            **kwargs,
+        })
+
+    # Complex api
+    #   - https://cloud.google.com/bigquery/docs/reference/standard-sql/query-syntax
+
+    Q = Union['BQQ', str]
+
+    def df(self, **kwargs) -> pd.DataFrame:
+        """Run query from .sql, returning a pandas df"""
+        if self.sql is None:
+            raise ValueError('self.sql is None')
+        return self(self.sql, **kwargs)
+
+    @property
+    def sql(self) -> str:
+        sql = lines(
+            self._if_clause('with', lambda named_qs:
+                strip_trailing_comma(
+                    lines('with', '', *[
+                        indent_lines(f'{name} as (', indent(self._sql(q)), '),', '')
+                        for name, q in named_qs.items()
+                    ]),
+                ),
+            ),
+            self._if_clause('subquery',           lambda q:  lines('(', indent(self._sql(q)), ')')),
+            self._if_clause('union_all',          lambda qs: lines(*intersperse('union all',          [self._sql(q) for q in qs]))),
+            self._if_clause('union_distinct',     lambda qs: lines(*intersperse('union distinct',     [self._sql(q) for q in qs]))),
+            self._if_clause('intersect_distinct', lambda qs: lines(*intersperse('intersect distinct', [self._sql(q) for q in qs]))),
+            self._if_clause('except_distinct',    lambda qs: lines(*intersperse('except distinct',    [self._sql(q) for q in qs]))),
+            self._get_clause('select', lambda s:
+                strip_trailing_comma(
+                    'select *' if s is None else lines('select', indent(strip_margin(s)))
+                )
+            ),
+            self._if_clause('from',               lambda s:  f'from {strip_margin(s)}'),
+            self._if_clause('where',              lambda s:  f'where {strip_margin(s)}'),
+            self._if_clause('group_by',           lambda s:  f'group by {strip_margin(s)}'),
+            self._if_clause('having',             lambda s:  f'having {strip_margin(s)}'),
+            self._if_clause('window',             lambda s:  f'window {strip_margin(s)}'),
+            self._if_clause('order_by',           lambda s:  f'order by {strip_margin(s)}'),
+            self._if_clause('limit',              lambda x:  f'limit {strip_margin(str(x))}'),  # Allow int
+        )
+        return sql or None
+
+    # These are all passthrus
+    def subquery           (self, q: Q):         return self._add_clause('subquery',           q)
+    def union_all          (self, *qs: List[Q]): return self._add_clause('union_all',          qs)
+    def union_distinct     (self, *qs: List[Q]): return self._add_clause('union_distinct',     qs)
+    def intersect_distinct (self, *qs: List[Q]): return self._add_clause('intersect_distinct', qs)
+    def except_distinct    (self, *qs: List[Q]): return self._add_clause('except_distinct',    qs)
+    def select             (self, s: str):       return self._add_clause('select',             s)
+    def where              (self, s: str):       return self._add_clause('where',              s)
+    def group_by           (self, s: str):       return self._add_clause('group_by',           s)
+    def having             (self, s: str):       return self._add_clause('having',             s)
+    def order_by           (self, s: str):       return self._add_clause('order_by',           s)
+    def limit              (self, s: str):       return self._add_clause('limit',              s)
+
+    # with_ is special
+    def with_(self, **named_qs):
+        """Allow multiple .with_ calls on the same query (instead of requiring a nested query)"""
+        return self._map_clause('with', lambda x:
+            dict(**(x or {}), **named_qs)  # Fail on name collision
+        )
+
+    # from_ is special
+    def from_(self, q: Q, name=None):
+        """Add BQQ's as a with_, add str's directly"""
+        cls = type(self)
+        if isinstance(q, str):
+            if name:
+                raise ValueError(f"Can't supply name[{name}] with str q[{q}]")
+            return self._add_clause('from', q)
+        elif isinstance(q, BQQ):
+            name = name or self._fresh_name()
+            return (self
+                .with_(**{name: q})
+                .from_(name)
+            )
+        else:
+            raise ValueError(f'Unexpected type[{type(q)}]')
+
+    def nest(self, name=None):
+        cls = type(self)
+        return (
+            cls(**self._globals())
+            .from_(self, name=name)
+        )
+
+    def inspect(self, f, display=None):
+        if display is None:
+            from IPython.display import display
+        display(f(self))
+        return self
+
+    def _get_clause(self, clause, f=lambda x: x):
+        return f(self.clauses.get(clause))
+
+    def _if_clause(self, clause, f=lambda x: x):
+        x = self.clauses.get(clause)
+        return None if x is None else f(x)
+
+    def _add_clause(self, clause, x):
+        if clause in self.clauses:
+            raise ValueError(f'Clause[{clause}] already set with value[{self.clauses[clause]}], in self[{self}]')
+        else:
+            return self.replace(clauses={
+                **self.clauses,
+                clause: x,
+            })
+
+    def _map_clause(self, clause, f):
+        return self.replace(clauses={
+            **self.clauses,
+            clause: f(self.clauses.get(clause)),
+        })
+
+    def _fresh_name(self):
+        return f'{self.fresh_prefix}%0{self.fresh_len}x' % random.getrandbits(self.fresh_len * 4)
+
+    def _sql(self, q: Q):
+        """q.sql if BQQ, else q if str"""
+        if isinstance(q, BQQ):
+            if q._globals() != self._globals():
+                raise ValueError(f'Globals must match: self[{self}], q[{q}]')
+            else:
+                return q.sql
+        elif isinstance(q, str):
+            return strip_margin(q)
+        else:
+            raise ValueError(f'Unexpected type[{type(q)}]')
+
+    def _globals(self):
+        cls = type(self)
+        return {
+            f.name: self[f.name]
+            for f in cls.fields()
+            if f.metadata.get('bqq.global', False)
+        }
+
+
+bqq = BQQ()
+
+
 # TODO Unify with potoo.sql_magics.BQMagics.bq (%bq)
-def bqq(
-    query: Optional[str] = None,
-    sql: Optional[str] = None,  # TODO Standardize on 'query' i/o 'sql' everywhere (e.g. spark() takes a query, not sql)
+def _bqq(
+    query: str,
     max_rows=1000,
     defs=None,
     show_query=False,
@@ -40,20 +241,22 @@ def bqq(
     **kwargs,
 ) -> pd.DataFrame:
     """
-    e.g. bqq('select 42')
+    e.g. _bqq('select 42')
     """
 
     kwargs.setdefault('billing_tier', 3)
-    sql = query if query is not None else sql  # Back compat
-    sql = sql.replace('$', '$$')  # Make '$' safe by assuming no variable references (see bq.Query? for details)
-    if defs: sql = defs + sql  # Prepend defs, if given
+    query = query.replace('$', '$$')  # Make '$' safe by assuming no variable references (see bq.Query? for details)
+    if defs:
+        query = lines(strip_margin(defs), '', strip_margin(query))
+    else:
+        query = strip_margin(query)
 
     if not show_query:
         log.info('Running query...')
     else:
-        log.info('Running query[%s]...' % sql)
+        log.info(lines('Running query... [', indent(strip_margin(query)), ']'))
     start_s = time.time()
-    query = bq.Query(sql).execute(dialect='standard', **kwargs)
+    query = bq.Query(query).execute(dialect='standard', **kwargs)
     job = query.results.job
     metadata = query.results.metadata
     log.info('[%.0fs] cost[%s] rows[%s] size[%s] url[%s]' % (
@@ -142,11 +345,11 @@ def bqq_from_job_id(
     context = context or datalab.context.Context.default()
     job = bq.Job(job_id, context)
     job_data = job._api.jobs_get(job.id)
-    sql = job_data['configuration']['query']['query']
-    log.info(f'Running job_id[{job_id}] with sql[\n{textwrap.indent(sql, prefix="  ")}\n]...')
+    query = job_data['configuration']['query']['query']
+    log.info(f'Running job_id[{job_id}] with query[\n{textwrap.indent(query, prefix="  ")}\n]...')
     # Have to re-run query since tmp tables that hold job results aren't shared to other users
     #   - e.g. if you open someone else's bq job url in the web ui, you see no results and have to click "Run Query"
-    return bqq(sql, **kwargs)
+    return bqq(query, **kwargs)
 
 
 def df_to_bq(
