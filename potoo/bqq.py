@@ -156,7 +156,7 @@ class BQQ(DataclassUtil, DataclassAsDict):
                     lines('select', indent(strip_margin(s)))
                 )
             ),
-            self._if_clause('from',               lambda s:  f'from {strip_margin(s)}'),
+            self._if_clause('from_',              lambda s:  f'from {strip_margin(s)}'),
             self._if_clause('where',              lambda s:
                 # Ergonomics for `where true\n... and ...` (semantically equiv)
                 lines('where true', indent(strip_margin(drop_lines(1, s)))) if s.startswith('true\n') else
@@ -180,14 +180,15 @@ class BQQ(DataclassUtil, DataclassAsDict):
     #   - TODO Kill the fluent api so that .query() is the only api
     #       - Think harder about .with_(), which _is_ valid to call multiple times...
     #       - Think harder about how .nest() leaves .from_() seeded with the next table name...
+    #       - Think harder about fluent api like .limit(), which is useful e.g. .inspect(lambda q: q.limit(10).df)
     #       - Clean up .name handling -- very stateful and error prone
-    def query(self, name=None, **kwargs):
+    def query(self, name=None, **clauses):
         if set(self.clauses.keys()) - {'with'}:
             self = self.nest()
         if name:
             self = self.named(name)
-        for k, v in kwargs.items():
-            self = getattr(self, k)(v)
+        for clause, x in clauses.items():
+            self = self._add_clause(clause, x)
         return self
 
     def nest(self):
@@ -195,7 +196,7 @@ class BQQ(DataclassUtil, DataclassAsDict):
         #   - Semantically equivalent to:
         #       return (self
         #           .no_locals
-        #           .from_(self, name=self.name)
+        #           ._from(self, name=self.name)
         #       )
         self.ensure_name()  # Else we clone before .name, and two different names happen
         return (self
@@ -204,30 +205,23 @@ class BQQ(DataclassUtil, DataclassAsDict):
                 *(self.clauses.get('with') or []),
                 *[self._map_clause('with', lambda qs: None)],
             )
-            .from_(self.name)
+            ._from(self.name)
         )
 
-    def inspect(self, f, display=None):
-        if display is None:
-            from IPython.display import display
-        display(f(self))
-        return self
-
-    # TODO Kill the fluent api (see above)
-
-    # These are all passthrus
-    #   - NOTE Avoid *qs else .query() gets complex
-    def subquery           (self, q: Q):        return self._add_clause('subquery',           q)
-    def union_all          (self, qs: List[Q]): return self._add_clause('union_all',          qs)
-    def union_distinct     (self, qs: List[Q]): return self._add_clause('union_distinct',     qs)
-    def intersect_distinct (self, qs: List[Q]): return self._add_clause('intersect_distinct', qs)
-    def except_distinct    (self, qs: List[Q]): return self._add_clause('except_distinct',    qs)
-    def select             (self, s: str):      return self._add_clause('select',             s)
-    def where              (self, s: str):      return self._add_clause('where',              s)
-    def group_by           (self, s: str):      return self._add_clause('group_by',           s)
-    def having             (self, s: str):      return self._add_clause('having',             s)
-    def order_by           (self, s: str):      return self._add_clause('order_by',           s)
-    def limit              (self, s: str):      return self._add_clause('limit',              s)
+    def _from(self, q: Q, name=None):
+        """Add BQQ's as a with_, add str's directly"""
+        cls = type(self)
+        if isinstance(q, str):
+            if name:
+                raise ValueError(f"Can't supply name[{name}] with str q[{q}]")
+            return self._add_clause('from_', q)
+        else:
+            if name:
+                q = q.named(name)
+            return (self
+                .with_(q)
+                ._from(q.name)
+            )
 
     # with_ is special
     def with_(self,
@@ -253,21 +247,28 @@ class BQQ(DataclassUtil, DataclassAsDict):
             *qs,
         ])
 
-    # from_ is special
-    def from_(self, q: Q, name=None):
-        """Add BQQ's as a with_, add str's directly"""
-        cls = type(self)
-        if isinstance(q, str):
-            if name:
-                raise ValueError(f"Can't supply name[{name}] with str q[{q}]")
-            return self._add_clause('from', q)
-        else:
-            if name:
-                q = q.named(name)
-            return (self
-                .with_(q)
-                .from_(q.name)
-            )
+    def inspect(self, f, display=None):
+        if display is None:
+            from IPython.display import display
+        display(f(self))
+        return self
+
+    # Fluent api
+    #   - Useful e.g. for .inspect(lambda q: q.limit(10).df())
+    #   - NOTE .limit() = .query(limit=...) is bad b/c the table name gets pinned as tmp which breaks if you reuse it in a .with_() later...
+    def subquery           (self, x): return self._add_clause('subquery',           x)
+    def union_all          (self, x): return self._add_clause('union_all',          x)
+    def union_distinct     (self, x): return self._add_clause('union_distinct',     x)
+    def intersect_distinct (self, x): return self._add_clause('intersect_distinct', x)
+    def except_distinct    (self, x): return self._add_clause('except_distinct',    x)
+    def select             (self, x): return self._add_clause('select',             x)
+    # def from_              (self, x): return self._add_clause('from_',              x)  # Not meaningful
+    def where              (self, x): return self._add_clause('where',              x)
+    def group_by           (self, x): return self._add_clause('group_by',           x)
+    def having             (self, x): return self._add_clause('having',             x)
+    def window             (self, x): return self._add_clause('window',             x)
+    def order_by           (self, x): return self._add_clause('order_by',           x)
+    def limit              (self, x): return self._add_clause('limit',              x)
 
     def _get_clause(self, clause, f=lambda x: x):
         return f(self.clauses.get(clause))
