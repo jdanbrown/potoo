@@ -3,12 +3,13 @@
 import dataclasses
 from dataclasses import dataclass, field
 from datetime import datetime
+import inspect
 import logging
 import random
 import re
 import textwrap
 import time
-from typing import List, Mapping, Optional, Tuple, Union
+from typing import Callable, List, Mapping, Optional, Tuple, Union
 
 import datalab
 import datalab.bigquery as bq
@@ -16,7 +17,7 @@ import datalab.storage as gs
 from datalab.bigquery._utils import TableName
 import gcsfs  # XXX Replace with pd.read_json in pandas 0.24.x [https://stackoverflow.com/a/50201179/397334]
 import humanize
-from more_itertools import intersperse
+from more_itertools import flatten, intersperse
 import pandas as pd
 
 from potoo import humanize
@@ -38,7 +39,12 @@ def strip_margin(s):
 def fold_whitespace(s):
     return re.sub(r'\s+', ' ', s)
 def strip_trailing_comma(s):
+    # FIXME Breaks if trailing comment is inside a comment
+    #   - Any good way to fix this without understanding the sql grammar?
+    #   - e.g. trying to detect (or strip) comments will fail if we don't understand string quoting
     return re.sub(r',(\s*)$', r'\1', s)
+def drop_lines(n, s):
+    return '\n'.join(s.split('\n')[n:])
 
 
 def bq_url_for_query(query: bq.QueryJob) -> str:
@@ -55,6 +61,31 @@ class BQQ(DataclassUtil, DataclassAsDict):
 
     # Local fields
     clauses: Mapping[str, any] = field(default_factory=lambda: {})
+    _name:   Optional[str]     = None
+
+    @property
+    def no_defs(self):
+        return self.replace(defs=None)
+
+    @property
+    def no_locals(self):
+        cls = type(self)
+        return cls(**self._globals())
+
+    @property
+    def name(self):
+        if self._name is None:
+            self._name = self._fresh_name()
+        return self._name
+
+    def ensure_name(self):
+        self.name
+        return self
+
+    def named(self, name):
+        if self._name is not None and self._name != name:
+            raise ValueError(f"Can't overwrite existing name[{self._name}] (got new name[{name}])")
+        return self.replace(_name=name)
 
     def __repr__(self):
         return lines(
@@ -67,6 +98,7 @@ class BQQ(DataclassUtil, DataclassAsDict):
                     indent_lines(strip_margin(self.defs)) or None,
                     "''',",
                 ),
+                f"_name={self._name!r},",
                 f"sql={self.sql!r}," if not self.sql else lines(
                     f"sql='''",
                     indent_lines(strip_margin(self.sql)) or None,
@@ -81,7 +113,7 @@ class BQQ(DataclassUtil, DataclassAsDict):
     def __call__(self, query: str, **kwargs) -> pd.DataFrame:
         """Run given query (ignoring .sql), returning a pandas df"""
         return _bqq(query, **{
-            'defs': strip_margin(self.defs),
+            'defs': None if self.defs is None else strip_margin(self.defs),
             **kwargs,
         })
 
@@ -99,11 +131,11 @@ class BQQ(DataclassUtil, DataclassAsDict):
     @property
     def sql(self) -> str:
         sql = lines(
-            self._if_clause('with', lambda named_qs:
+            self._if_clause('with', lambda qs:
                 strip_trailing_comma(
                     lines('with', '', *[
-                        indent_lines(f'{name} as (', indent(self._sql(q)), '),', '')
-                        for name, q in named_qs.items()
+                        indent_lines(f'{q.name} as (', indent(self._sql(q)), '),', '')
+                        for q in qs
                     ]),
                 ),
             ),
@@ -114,11 +146,25 @@ class BQQ(DataclassUtil, DataclassAsDict):
             self._if_clause('except_distinct',    lambda qs: lines(*intersperse('except distinct',    [self._sql(q) for q in qs]))),
             self._get_clause('select', lambda s:
                 strip_trailing_comma(
-                    'select *' if s is None else lines('select', indent(strip_margin(s)))
+                    # Allow no `select` -> use `select *`
+                    'select *' if s is None else
+                    # Ergonomics for one-line select (semantically equiv)
+                    f'select {strip_margin(s)}' if '\n' not in s else
+                    # Ergonomics for `select distinct` (semantically equiv)
+                    lines('select distinct', indent(strip_margin(drop_lines(1, s)))) if s.startswith('distinct\n') else
+                    # Else normal select
+                    lines('select', indent(strip_margin(s)))
                 )
             ),
             self._if_clause('from',               lambda s:  f'from {strip_margin(s)}'),
-            self._if_clause('where',              lambda s:  f'where {strip_margin(s)}'),
+            self._if_clause('where',              lambda s:
+                # Ergonomics for `where true\n... and ...` (semantically equiv)
+                lines('where true', indent(strip_margin(drop_lines(1, s)))) if s.startswith('true\n') else
+                # Ergonomics for `where false\n... or ...` (semantically equiv)
+                lines('where false', indent(strip_margin(drop_lines(1, s)))) if s.startswith('false\n') else
+                # Else normal where
+                f'where {strip_margin(s)}'
+            ),
             self._if_clause('group_by',           lambda s:  f'group by {strip_margin(s)}'),
             self._if_clause('having',             lambda s:  f'having {strip_margin(s)}'),
             self._if_clause('window',             lambda s:  f'window {strip_margin(s)}'),
@@ -127,25 +173,85 @@ class BQQ(DataclassUtil, DataclassAsDict):
         )
         return sql or None
 
+    # Alternate api, which is maybe more ergonomic would avoid needing .nest() and maybe be simpler
+    #   - Makes clear where the query boundaries are
+    #   - Doesn't allow invalid repetitions of the fluent-style clauses
+    #   - Avoids .nest()
+    #   - TODO Kill the fluent api so that .query() is the only api
+    #       - Think harder about .with_(), which _is_ valid to call multiple times...
+    #       - Think harder about how .nest() leaves .from_() seeded with the next table name...
+    #       - Clean up .name handling -- very stateful and error prone
+    def query(self, name=None, **kwargs):
+        if set(self.clauses.keys()) - {'with'}:
+            self = self.nest()
+        if name:
+            self = self.named(name)
+        for k, v in kwargs.items():
+            self = getattr(self, k)(v)
+        return self
+
+    def nest(self):
+        # Do a little work to keep the `with` clauses flat i/o O(n) nested
+        #   - Semantically equivalent to:
+        #       return (self
+        #           .no_locals
+        #           .from_(self, name=self.name)
+        #       )
+        self.ensure_name()  # Else we clone before .name, and two different names happen
+        return (self
+            .no_locals
+            .with_(
+                *(self.clauses.get('with') or []),
+                *[self._map_clause('with', lambda qs: None)],
+            )
+            .from_(self.name)
+        )
+
+    def inspect(self, f, display=None):
+        if display is None:
+            from IPython.display import display
+        display(f(self))
+        return self
+
+    # TODO Kill the fluent api (see above)
+
     # These are all passthrus
-    def subquery           (self, q: Q):         return self._add_clause('subquery',           q)
-    def union_all          (self, *qs: List[Q]): return self._add_clause('union_all',          qs)
-    def union_distinct     (self, *qs: List[Q]): return self._add_clause('union_distinct',     qs)
-    def intersect_distinct (self, *qs: List[Q]): return self._add_clause('intersect_distinct', qs)
-    def except_distinct    (self, *qs: List[Q]): return self._add_clause('except_distinct',    qs)
-    def select             (self, s: str):       return self._add_clause('select',             s)
-    def where              (self, s: str):       return self._add_clause('where',              s)
-    def group_by           (self, s: str):       return self._add_clause('group_by',           s)
-    def having             (self, s: str):       return self._add_clause('having',             s)
-    def order_by           (self, s: str):       return self._add_clause('order_by',           s)
-    def limit              (self, s: str):       return self._add_clause('limit',              s)
+    #   - NOTE Avoid *qs else .query() gets complex
+    def subquery           (self, q: Q):        return self._add_clause('subquery',           q)
+    def union_all          (self, qs: List[Q]): return self._add_clause('union_all',          qs)
+    def union_distinct     (self, qs: List[Q]): return self._add_clause('union_distinct',     qs)
+    def intersect_distinct (self, qs: List[Q]): return self._add_clause('intersect_distinct', qs)
+    def except_distinct    (self, qs: List[Q]): return self._add_clause('except_distinct',    qs)
+    def select             (self, s: str):      return self._add_clause('select',             s)
+    def where              (self, s: str):      return self._add_clause('where',              s)
+    def group_by           (self, s: str):      return self._add_clause('group_by',           s)
+    def having             (self, s: str):      return self._add_clause('having',             s)
+    def order_by           (self, s: str):      return self._add_clause('order_by',           s)
+    def limit              (self, s: str):      return self._add_clause('limit',              s)
 
     # with_ is special
-    def with_(self, **named_qs):
+    def with_(self,
+        *qs: List[Union[Q, Callable[['BQQ'], Q]]],
+        **named_qs: Mapping[str, Union[Q, Callable[['BQQ'], Q]]],
+    ):
         """Allow multiple .with_ calls on the same query (instead of requiring a nested query)"""
-        return self._map_clause('with', lambda x:
-            dict(**(x or {}), **named_qs)  # Fail on name collision
-        )
+        qs = [
+            # Resolve args
+            #   - TODO Think harder about this api -- which of the many variants should we standardize on?
+            *[
+                q(self) if inspect.isfunction(q) else q  # Can't use callable() b/c BQQ.__call__
+                for q in qs
+            ],
+            *[
+                (q(self) if inspect.isfunction(q) else q)  # Can't use callable() b/c BQQ.__call__
+                    .named(name)
+                for name, q in named_qs.items()
+            ],
+        ]
+        return self._map_clause('with', lambda x: [
+            *(x or []),
+            *qs,
+        ])
 
     # from_ is special
     def from_(self, q: Q, name=None):
@@ -155,27 +261,13 @@ class BQQ(DataclassUtil, DataclassAsDict):
             if name:
                 raise ValueError(f"Can't supply name[{name}] with str q[{q}]")
             return self._add_clause('from', q)
-        elif isinstance(q, BQQ):
-            name = name or self._fresh_name()
-            return (self
-                .with_(**{name: q})
-                .from_(name)
-            )
         else:
-            raise ValueError(f'Unexpected type[{type(q)}]')
-
-    def nest(self, name=None):
-        cls = type(self)
-        return (
-            cls(**self._globals())
-            .from_(self, name=name)
-        )
-
-    def inspect(self, f, display=None):
-        if display is None:
-            from IPython.display import display
-        display(f(self))
-        return self
+            if name:
+                q = q.named(name)
+            return (self
+                .with_(q)
+                .from_(q.name)
+            )
 
     def _get_clause(self, clause, f=lambda x: x):
         return f(self.clauses.get(clause))
@@ -204,15 +296,13 @@ class BQQ(DataclassUtil, DataclassAsDict):
 
     def _sql(self, q: Q):
         """q.sql if BQQ, else q if str"""
-        if isinstance(q, BQQ):
-            if q._globals() != self._globals():
-                raise ValueError(f'Globals must match: self[{self}], q[{q}]')
-            else:
-                return q.sql
-        elif isinstance(q, str):
+        if isinstance(q, str):
             return strip_margin(q)
         else:
-            raise ValueError(f'Unexpected type[{type(q)}]')
+            if q._globals() != self._globals():
+                raise ValueError(f'Globals must match: q[{q._globals()}], self[{self._globals()}]')
+            else:
+                return q.sql
 
     def _globals(self):
         cls = type(self)
@@ -220,6 +310,14 @@ class BQQ(DataclassUtil, DataclassAsDict):
             f.name: self[f.name]
             for f in cls.fields()
             if f.metadata.get('bqq.global', False)
+        }
+
+    def _locals(self):
+        cls = type(self)
+        return {
+            f.name: self[f.name]
+            for f in cls.fields()
+            if not f.metadata.get('bqq.global', False)
         }
 
 
