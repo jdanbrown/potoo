@@ -416,6 +416,44 @@ def df_remove_unused_categories(df: pd.DataFrame) -> pd.DataFrame:
     })
 
 
+def df_ordered_cats_like(df: pd.DataFrame, **col_names_to_cats) -> pd.DataFrame:
+    """
+    More flexible than df.astype({'foo': cat_dtype, ...}) / df_ordered_cat(df, ...)
+    - In addition to cat dtypes, allows cols with cat dtype, lists of cat values, and functions that return any of those
+    - Like .astype(), preserves unused cat values (caller can use df_remove_unused_categories if desired)
+    """
+    return (df
+        .assign(**{
+            col_name: df[col_name].pipe(as_ordered_cat_like, cats)
+            for col_name, cats in col_names_to_cats.items()
+        })
+    )
+
+def as_ordered_cat_like(s: pd.Series, cats) -> pd.Series:
+    """
+    More flexible than s.astype(cat_dtype) / as_ordered_cat(s, cat_values)
+    - In addition to cat dtypes, allows cols with cat dtype, lists of cat values, and functions that return any of those
+    - Like .astype(), preserves unused cat values (caller can use df_remove_unused_categories if desired)
+    """
+    # Allow functions (of the input col)
+    if callable(cats):
+        cats = cats(s)
+    # Allow cols with categorical dtype
+    #   - Fail on cols with non-categorical dtype
+    if isinstance(cats, pd.Series):
+        cats = cats.dtypes.categories
+    # Allow categorical dtypes
+    #   - TODO Is there a robust way to isinstance(cats, [np.dtype, pd.dtype]) so we can fail on non-categorical dtypes?
+    if isinstance(cats, pd.api.types.CategoricalDtype):
+        cats = cats.categories
+    # At this point cats should be an iter of cat values
+    #   - Dedupe them for the user, since CategoricalDtype rejects duplicate cat values
+    return as_ordered_cat(
+        s,
+        ordered_cats=list(unique_everseen(cats)),
+    )
+
+# XXX Try migrating callers to df_ordered_cats_like to see if we can kill this less-usable one
 # FIXME Multiple *args appears broken: `.pipe(df_ordered_cat, 'x', 'y')`
 #   - Workaround: `.pipe(df_ordered_cat, 'x').pipe(df_ordered_cat, 'y')`
 def df_ordered_cat(df: pd.DataFrame, *args, transform=lambda x: x, **kwargs) -> pd.DataFrame:
