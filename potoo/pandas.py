@@ -201,7 +201,7 @@ def df_assign_first(df, **kwargs) -> pd.DataFrame:
     )
 
 
-def df_col_map(df, **kwargs) -> pd.DataFrame:
+def df_map_col(df, **kwargs) -> pd.DataFrame:
     """
     Map col values by the given function
     - A shorthand for a very common usage of df.assign / df.col.map
@@ -210,6 +210,11 @@ def df_col_map(df, **kwargs) -> pd.DataFrame:
         c: df[c].map(f)
         for c, f in kwargs.items()
     })
+
+
+# XXX Deprecated: remove after updating callers
+def df_col_map(*args, **kwargs) -> pd.DataFrame:
+    return df_col_map(*args, **kwargs)
 
 
 # Based on https://github.com/pandas-dev/pandas/issues/8517#issuecomment-247785821
