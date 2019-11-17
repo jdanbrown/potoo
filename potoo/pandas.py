@@ -733,6 +733,7 @@ def df_col_color_d(
     _join=',',
     _stack=False,
     _extend_cmap=False,
+    _html_color_kwargs=dict(),
     **col_cmaps,
 ) -> pd.DataFrame:
     """Color the (discrete) values in a df column (like plotnine.scale_color_cmap_d for tables)"""
@@ -742,7 +743,7 @@ def df_col_color_d(
     from mizani.palettes import cmap_d_pal
     from potoo.plot import mpl_cmap_repeat
 
-    # Break cycling import
+    # Break cyclic import
     from potoo.ipython import df_cell_display, df_cell_stack
 
     def iter_or_singleton(x: Union[Iterable[X], X]) -> Iterable[X]:
@@ -762,7 +763,7 @@ def df_col_color_d(
         # FIXME 'text/plain' gets '' from HTML(...) [repro-able? why does this happen?]
         join = lambda xs: df_cell_stack(xs) if _stack else df_cell_display(HTML(_join.join(xs)))
         return s.apply(lambda v: join(
-            _html_color(v, colors)
+            _html_color(v, colors, **_html_color_kwargs)
             for v in iter_or_singleton(v)
         ))
     return df.assign(**{
@@ -771,13 +772,23 @@ def df_col_color_d(
     })
 
 
-def df_cell_color(x: any, colors: Mapping[any, str]) -> 'df_cell':
-    from potoo.ipython import df_cell_display  # Break cycling import
-    return df_cell_display(HTML(_html_color(x, colors)))
+def df_cell_color(
+    x_html: any,
+    colors: Mapping[any, str],
+    **kwargs,
+) -> 'df_cell':
+    from potoo.ipython import df_cell_display  # Break cyclic import
+    return df_cell_display(HTML(_html_color(x_html, colors, **kwargs)))
 
 
-def _html_color(x: any, colors: Mapping[any, str]) -> str:
-    return '<span style="color: %s">%s</span>' % (colors.get(x, 'inherit'), x)
+def _html_color(
+    x_html: any,
+    colors: Mapping[any, str],
+    elem='span',
+    attr='color',
+) -> str:
+    color = colors.get(x_html, 'inherit')
+    return '<%(elem)s style="%(attr)s: %(color)s">%(x_html)s</span>' % locals()
 
 
 #
