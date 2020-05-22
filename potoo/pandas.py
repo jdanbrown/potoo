@@ -214,7 +214,7 @@ def df_map_col(df, **kwargs) -> pd.DataFrame:
 
 # XXX Deprecated: remove after updating callers
 def df_col_map(*args, **kwargs) -> pd.DataFrame:
-    return df_col_map(*args, **kwargs)
+    return df_map_col(*args, **kwargs)
 
 
 # Based on https://github.com/pandas-dev/pandas/issues/8517#issuecomment-247785821
