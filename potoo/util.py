@@ -83,6 +83,29 @@ def singleton(cls):
     return cls()
 
 
+def str_strip_startswith(s: str, *startswiths: str) -> str:
+    for startswith in startswiths:
+        if s.startswith(startswith):
+            s = s[len(startswith):]
+    return s
+
+
+def str_strip_endswith(s: str, *endswiths: str) -> str:
+    for endswith in endswiths:
+        if s.endswith(endswith):
+            s = s[:-len(endswith)]
+    return s
+
+
+def str_ensure_startswith(s: str, startswith: str) -> str:
+    return s if s.startswith(startswith) else startswith + s
+
+
+def str_ensure_endswith(s: str, endswith: str) -> str:
+    return s if s.endswith(endswith) else s + endswith
+
+
+# XXX Deprecated, migrate callers to str_strip_startswith (check=True no longer supported)
 def strip_startswith(s: str, startswith: str, check=False) -> str:
     if s.startswith(startswith):
         return s[len(startswith):]
@@ -92,6 +115,7 @@ def strip_startswith(s: str, startswith: str, check=False) -> str:
         return s
 
 
+# XXX Deprecated, migrate callers to str_strip_startswith (check=True no longer supported)
 def strip_endswith(s: str, endswith: str, check=False) -> str:
     if s.endswith(endswith):
         return s[:-len(endswith)]
@@ -101,10 +125,12 @@ def strip_endswith(s: str, endswith: str, check=False) -> str:
         return s
 
 
+# XXX Renamed, migrate callers to str_ensure_startswith
 def ensure_startswith(s: str, startswith: str) -> str:
     return s if s.startswith(startswith) else startswith + s
 
 
+# XXX Renamed, migrate callers to str_ensure_endswith
 def ensure_endswith(s: str, endswith: str) -> str:
     return s if s.endswith(endswith) else s + endswith
 
