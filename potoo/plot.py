@@ -4,7 +4,7 @@ from functools import partial, reduce
 import itertools
 import re
 import tempfile
-from typing import Callable, Optional, Union
+from typing import Callable, Iterable, Optional, Union
 import warnings
 
 import humanize
@@ -496,6 +496,11 @@ def mpl_cmap_with_colors(cmap: mpl.colors.ListedColormap, f: Callable[[list], li
 def mpl_cmap_with_colors_noresample(cmap: mpl.colors.ListedColormap, f: Callable[[list], list]) -> mpl.colors.ListedColormap:
     cmap = plt.cm.get_cmap(cmap) if isinstance(cmap, str) else cmap
     return mpl.colors.ListedColormap(list(f(cmap.colors)))
+
+
+def mpl_cmap_colors_to_hex(cmap: mpl.colors.ListedColormap) -> Iterable[str]:
+    cmap = plt.cm.get_cmap(cmap) if isinstance(cmap, str) else cmap
+    return [mpl.colors.to_hex(x) for x in cmap.colors]
 
 
 def plt_to_img(dummy: any = None, **kwargs) -> PIL.Image.Image:
