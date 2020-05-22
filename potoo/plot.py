@@ -469,6 +469,11 @@ if load_ext_rpy2_ipython():
 #
 
 
+def mpl_cmap_reversed(cmap: Union[str, mpl.colors.ListedColormap]) -> mpl.colors.ListedColormap:
+    cmap = plt.cm.get_cmap(cmap) if isinstance(cmap, str) else cmap
+    return mpl.colors.ListedColormap(list(reversed(cmap.colors)))
+
+
 def mpl_cmap_concat(*cmaps: Union[str, mpl.colors.ListedColormap]) -> mpl.colors.ListedColormap:
     cmaps = [plt.cm.get_cmap(cmap) if isinstance(cmap, str) else cmap for cmap in cmaps]
     return mpl.colors.ListedColormap(list(flatten(cmap.colors for cmap in cmaps)))
