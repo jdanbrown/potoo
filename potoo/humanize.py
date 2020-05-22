@@ -1,5 +1,7 @@
 import humanize
 
+from potoo.util import str_strip_endswith
+
 
 def naturalsize_binary(size: float, **kwargs) -> str:
     """
@@ -23,4 +25,11 @@ def naturalsize(size: float, **kwargs) -> str:
         humanize.naturalsize(size, **kwargs)
     )
     s = s.replace(' Bytes', ' B')
+    s = s.replace(' Byte', ' B')
+    return s
+
+
+def naturalsize_no_suffix(size: float, **kwargs) -> str:
+    s = naturalsize(size)
+    s = str_strip_endswith(s, 'B', 'Bytes', 'Byte').rstrip()
     return s
