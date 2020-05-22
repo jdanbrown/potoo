@@ -35,8 +35,14 @@ def tap(x, f, *fs):
     return x
 
 
+def printed(x, f=lambda x: x):
+    print(f(x))
+    return x
+
+
+# XXX Deprecated, use printed()
 def puts(x, f=lambda x: x):
-    return tap(x, f=lambda x: print(f(x)))
+    return printed(x, f)
 
 
 def dirs(x, _=False, __=False, __globals__=False):
