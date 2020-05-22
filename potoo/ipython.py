@@ -25,6 +25,11 @@ from potoo.pandas import cat_to_str
 from potoo.util import AttrContext, or_else, deep_round_sig, singleton
 
 
+def displayed(x, f=lambda x: x):
+    display(f(x))
+    return x
+
+
 def ipy_format(*xs: any, mimetype='text/plain', join='\n') -> str:
     """
     Format like IPython.display.display
